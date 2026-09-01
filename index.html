@@ -212,7 +212,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
       <thead><tr>
         <th><input type="checkbox" id="chk-all" title="Seleccionar/deseleccionar todos"></th>
         <th>OC</th><th>Fecha</th><th>Proveedor</th>
-        <th>Sector</th><th>Mon</th><th style="text-align:right">Importe</th><th>%</th>
+        <th>Sector</th><th>Mon</th><th>TC</th><th style="text-align:right">Importe</th><th>%</th>
         <th>Forma de pago</th><th>Plazo</th><th>Ingreso</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
@@ -288,7 +288,7 @@ function fmtUSD(n){return 'U$S '+new Intl.NumberFormat('es-AR',{maximumFractionD
 function fmtMon(n,mon){return mon==='USD'?fmtUSD(n):fmtARS(n)}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function efectivo(o){return o.total*(o.porcentaje||100)/100}
-function efectivoARS(o){return efectivo(o)*(o.moneda==='USD'?state.tipoCambio:1)}
+function efectivoARS(o){return efectivo(o)*(o.moneda==='USD'?(o.tipoCambio||state.tipoCambio):1)}
 
 function fmtDate(d){
   if(!d) return '';
@@ -310,6 +310,7 @@ function loadBacklog(){
     var data=JSON.parse(raw);
     state.orders=(data.orders||[]).map(function(o){return Object.assign({},o,{
       moneda:o.moneda||'ARS',
+      tipoCambio:o.tipoCambio||1,
       porcentaje:o.porcentaje!=null?o.porcentaje:100,
       plazo:o.plazo!=null?String(o.plazo):''
     });});
@@ -373,6 +374,10 @@ function parseFile(file){
 function rowToOrder(r,fechaIngreso){
   var desc=r['Descripción']||r['Descripcion']||'';
   var pp=extractPagoYPct(desc);
+  var monRaw=String(r['Moneda']||'').toUpperCase().trim();
+  var esUSD=monRaw.indexOf('DOLAR')>=0||monRaw==='USD'||monRaw==='US$';
+  var cotizKey=Object.keys(r).find(function(k){return k.match(/^cotizaci/i);});
+  var cotiz=cotizKey?Number(r[cotizKey])||1:1;
   return {
     oc:String(r['Doc-nro int']||'').trim(),
     fecha:r['Fecha']||'',
@@ -383,7 +388,8 @@ function rowToOrder(r,fechaIngreso){
     sector:extractSector(desc),
     pago:pp.pago,
     plazo:extractPlazo(desc),
-    moneda:'ARS',
+    moneda:esUSD?'USD':'ARS',
+    tipoCambio:esUSD?cotiz:1,
     porcentaje:pp.pct,
     fechaIngreso:fechaIngreso
   };
@@ -517,10 +523,11 @@ function render(){
       +'<td class="fecha">'+fmtDate(o.fecha)+'</td>'
       +'<td class="prov" title="'+esc(o.proveedor)+'">'+esc(o.proveedor)+'</td>'
       +'<td><input type="text" list="sector-list" value="'+esc(o.sector)+'" onchange="updField('+o.i+',\'sector\',this.value)"></td>'
-      +'<td><select class="mon-sel" onchange="updField('+o.i+',\'moneda\',this.value)">'
+      +'<td><select class="mon-sel" onchange="updMoneda('+o.i+',this.value)">'
         +'<option value="ARS"'+(o.moneda!=='USD'?' selected':'')+'>ARS</option>'
         +'<option value="USD"'+(o.moneda==='USD'?' selected':'')+'>USD</option>'
       +'</select></td>'
+      +'<td>'+(o.moneda==='USD'?'<input type="number" class="pct-input" style="width:58px" min="1" step="1" value="'+(o.tipoCambio||state.tipoCambio)+'" onchange="updField('+o.i+',\'tipoCambio\',+this.value)">':'-')+'</td>'
       +'<td class="num" title="'+(showEf?'A pagar: '+fmtMon(ef,o.moneda):'')+'">'
         +fmtMon(o.total,o.moneda)
         +(showEf?'<br><small style="color:var(--acc);font-size:.68rem">'+fmtMon(ef,o.moneda)+'</small>':'')
@@ -568,6 +575,12 @@ function updField(i,f,v){state.orders[i][f]=v;state.unsaved=true;render();update
 function updPct(i,v){
   v=Math.max(1,Math.min(100,v||100));
   state.orders[i].porcentaje=v;
+  state.unsaved=true;render();updateSaveMeta();
+}
+function updMoneda(i,v){
+  state.orders[i].moneda=v;
+  if(v==='USD'&&!state.orders[i].tipoCambio) state.orders[i].tipoCambio=state.tipoCambio;
+  if(v==='ARS') state.orders[i].tipoCambio=1;
   state.unsaved=true;render();updateSaveMeta();
 }
 function selectVisible(sel){
@@ -669,10 +682,10 @@ function renderReport(){
   html+='</tbody></table></div>';
 
   html+='<h2>Detalle de Ordenes Seleccionadas</h2>';
-  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>OC</th><th>Proveedor</th><th>Sector</th><th>Mon</th><th style="text-align:right">Importe</th><th>%</th><th style="text-align:right">A Pagar</th><th>Forma</th><th>Plazo</th></tr></thead><tbody>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>OC</th><th>Proveedor</th><th>Sector</th><th>Mon</th><th>TC</th><th style="text-align:right">Importe</th><th>%</th><th style="text-align:right">A Pagar</th><th style="text-align:right">Equiv. ARS</th><th>Forma</th><th>Plazo</th></tr></thead><tbody>';
   sel.forEach(function(o,vi){
-    var ef=efectivo(o);
-    html+='<tr class="'+(vi%2?'alt':'')+'"><td class="oc">'+esc(o.oc)+'</td><td class="prov" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.proveedor)+'</td><td>'+esc(o.sector)+'</td><td>'+o.moneda+'</td><td class="num">'+fmtMon(o.total,o.moneda)+'</td><td>'+(o.porcentaje||100)+'%</td><td class="num">'+fmtMon(ef,o.moneda)+'</td><td>'+esc(o.pago)+'</td><td>'+esc(o.plazo||'-')+'</td></tr>';
+    var ef=efectivo(o);var eARS=efectivoARS(o);
+    html+='<tr class="'+(vi%2?'alt':'')+'"><td class="oc">'+esc(o.oc)+'</td><td class="prov" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.proveedor)+'</td><td>'+esc(o.sector)+'</td><td>'+o.moneda+'</td><td class="num">'+(o.moneda==='USD'?(o.tipoCambio||'-'):'-')+'</td><td class="num">'+fmtMon(o.total,o.moneda)+'</td><td>'+(o.porcentaje||100)+'%</td><td class="num">'+fmtMon(ef,o.moneda)+'</td><td class="num">'+fmtARS(eARS)+'</td><td>'+esc(o.pago)+'</td><td>'+esc(o.plazo||'-')+'</td></tr>';
   });
   html+='</tbody></table></div>';
 
@@ -686,19 +699,19 @@ function exportData(){
   var wb=XLSX.utils.book_new();
   var tc=state.tipoCambio;
 
-  var h1=[['REPORTE DE PAGOS SEMANAL'],['HIJOS DE SALVADOR MUÑOZ S.A.'],['Tipo de Cambio: '+tc],
-    [],['Nro OC','Proveedor','Sector','Moneda','Importe Original','%','Importe a Pagar','Equiv. ARS','Forma de Pago','Plazo']];
-  var d1=sel.map(function(o){var ef=efectivo(o);return [o.oc,o.proveedor,o.sector,o.moneda,o.total,o.porcentaje||100,ef,efectivoARS(o),o.pago,o.plazo||''];});
+  var h1=[['REPORTE DE PAGOS SEMANAL'],['HIJOS DE SALVADOR MUÑOZ S.A.'],
+    [],['Nro OC','Proveedor','Sector','Moneda','TC','Importe Original','%','Importe a Pagar','Equiv. ARS','Forma de Pago','Plazo']];
+  var d1=sel.map(function(o){var ef=efectivo(o);return [o.oc,o.proveedor,o.sector,o.moneda,o.moneda==='USD'?(o.tipoCambio||''):1,o.total,o.porcentaje||100,ef,efectivoARS(o),o.pago,o.plazo||''];});
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalTransf=sel.filter(function(o){return o.pago==='Transferencia';}).reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalEcheq=sel.filter(function(o){return o.pago==='Echeq';}).reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalContado=sel.filter(function(o){return o.pago==='Contado'||o.pago==='Cheque';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  d1.push([],['TOTAL EQUIVALENTE ARS','','','','','','',totalEquiv,'',''],
-    [],['TOTAL TRANSFERENCIAS','','','','','','',totalTransf,'',''],
-    ['TOTAL ECHEQ','','','','','','',totalEcheq,'',''],
-    ['TOTAL CONTADO / CHEQUE','','','','','','',totalContado,'','']);
+  d1.push([],['TOTAL EQUIVALENTE ARS','','','','','','','',totalEquiv,'',''],
+    [],['TOTAL TRANSFERENCIAS','','','','','','','',totalTransf,'',''],
+    ['TOTAL ECHEQ','','','','','','','',totalEcheq,'',''],
+    ['TOTAL CONTADO / CHEQUE','','','','','','','',totalContado,'','']);
   var ws1=XLSX.utils.aoa_to_sheet(h1.concat(d1));
-  ws1['!cols']=[{wch:18},{wch:45},{wch:22},{wch:8},{wch:16},{wch:6},{wch:16},{wch:18},{wch:22},{wch:12}];
+  ws1['!cols']=[{wch:18},{wch:45},{wch:22},{wch:8},{wch:10},{wch:16},{wch:6},{wch:16},{wch:18},{wch:22},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws1,'Detalle de Pagos');
 
   var sectorMap={};
@@ -735,7 +748,7 @@ function exportData(){
       }
     });
   };
-  applyFmt(ws1,[4,5,6,7],5,5+sel.length+6);
+  applyFmt(ws1,[5,6,7,8],4,4+sel.length+6);
   applyFmt(ws2,[2,3,4],4,4+sRows.length+1);
   applyFmt(ws3,[2,3,4],4,4+pRows.length+1);
 
