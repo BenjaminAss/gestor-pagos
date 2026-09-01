@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root {
   --pri: #1e3d59; --pri-light: #e8eef3;
@@ -137,6 +138,50 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 .rpt-table tr:hover td{background:var(--acc-light)}
 .rpt-table .rpt-total td{font-weight:700;border-top:2px solid var(--border-strong);background:var(--bg-card)}
 .rpt-empty{text-align:center;padding:3rem;color:var(--text-muted);font-size:.9rem}
+
+.rpt-dash{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+.rpt-chart-box{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:1rem;min-height:220px;position:relative}
+.rpt-chart-box h3{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:.6rem}
+.rpt-indicators{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem;margin-bottom:1.5rem}
+.rpt-ind{padding:.7rem .9rem;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;text-align:center}
+.rpt-ind .ind-val{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.2rem 0}
+.rpt-ind .ind-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);font-weight:500}
+.rpt-ind .ind-sub{font-size:.72rem;margin-top:.2rem}
+.rpt-ind .ind-bar{height:6px;border-radius:3px;background:var(--border);margin-top:.4rem;overflow:hidden}
+.rpt-ind .ind-bar-fill{height:100%;border-radius:3px;transition:width .5s}
+.rpt-ind.green .ind-val{color:var(--acc)} .rpt-ind.green .ind-bar-fill{background:var(--acc)}
+.rpt-ind.amber .ind-val{color:var(--warn)} .rpt-ind.amber .ind-bar-fill{background:var(--warn)}
+.rpt-ind.red .ind-val{color:var(--danger)} .rpt-ind.red .ind-bar-fill{background:var(--danger)}
+.rpt-ind.blue .ind-val{color:var(--pri)} .rpt-ind.blue .ind-bar-fill{background:var(--pri)}
+.rpt-toolbar{display:flex;justify-content:flex-end;margin-bottom:1rem;gap:.5rem}
+
+.rpt-print-header{display:none}
+
+@media print{
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+  body{background:#fff !important;color:#1a1a18 !important;font-size:10pt}
+  .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay{display:none !important}
+  .workspace{display:block !important;height:auto !important}
+  .report{display:block !important;overflow:visible !important;padding:0 !important}
+  #tab-orders{display:none !important}
+  .rpt-print-header{display:block !important;text-align:center;margin-bottom:1.2rem;padding-bottom:.8rem;border-bottom:2px solid #1e3d59}
+  .rpt-print-header h1{font-size:14pt;color:#1e3d59;margin-bottom:.15rem}
+  .rpt-print-header p{font-size:9pt;color:#5a5954}
+  .rpt-cards{grid-template-columns:repeat(3,1fr) !important}
+  .rpt-card{border:1px solid #ccc !important;background:#f8f8f8 !important}
+  .rpt-dash{grid-template-columns:1fr 1fr !important}
+  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;page-break-inside:avoid}
+  .rpt-indicators{grid-template-columns:repeat(4,1fr) !important}
+  .rpt-ind{border:1px solid #ccc !important}
+  .rpt-table-wrap{page-break-inside:auto}
+  .rpt-table th{background:#e8eef3 !important;color:#1a1a18 !important}
+  .rpt-table .rpt-total td{background:#f4f4f1 !important}
+  .report h2{color:#1e3d59 !important;page-break-after:avoid}
+  canvas{max-width:100% !important}
+}
+@media print and (min-width:0){
+  .rpt-dash{break-inside:avoid}
+}
 
 .export-bar{padding:.65rem 1.5rem;background:var(--bg-card);border-top:2px solid var(--acc);display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
 .export-bar .stat{font-size:.8rem;color:var(--text-sec)}
@@ -610,12 +655,22 @@ function switchTab(tab){
   if(tab==='report') renderReport();
 }
 
+var chartInstances=[];
+function destroyCharts(){chartInstances.forEach(function(c){c.destroy();});chartInstances=[];}
+
+function parsePlazoAvg(plazo){
+  if(!plazo) return 0;
+  var parts=String(plazo).split(/[-\/]/).map(Number).filter(function(n){return !isNaN(n)&&n>0;});
+  if(!parts.length) return 0;
+  return parts.reduce(function(a,b){return a+b;},0)/parts.length;
+}
+
 function renderReport(){
+  destroyCharts();
   var el=document.getElementById('tab-report');
   var sel=[...state.selected].map(function(i){return state.orders[i];}).filter(Boolean);
   if(!sel.length){el.innerHTML='<div class="rpt-empty">Selecciona ordenes para ver el reporte</div>';return;}
 
-  var tc=state.tipoCambio;
   var totalARS=sel.filter(function(o){return o.moneda!=='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
   var totalUSD=sel.filter(function(o){return o.moneda==='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
@@ -624,14 +679,34 @@ function renderReport(){
   var totalOtros=totalEquiv-totalTransf-totalEcheq;
   var hasUSD=totalUSD>0;
 
-  var html='<div class="rpt-cards">';
-  html+='<div class="rpt-card"><div class="label">Ordenes</div><div class="val blue">'+sel.length+'</div></div>';
-  html+='<div class="rpt-card"><div class="label">Total ARS</div><div class="val">'+fmtARS(totalARS)+'</div></div>';
-  if(hasUSD) html+='<div class="rpt-card"><div class="label">Total USD</div><div class="val amber">'+fmtUSD(totalUSD)+'</div></div>';
-  html+='<div class="rpt-card"><div class="label">Equivalente Total'+(hasUSD?' (TC '+tc+')':'')+'</div><div class="val green">'+fmtARS(totalEquiv)+'</div></div>';
-  html+='<div class="rpt-card"><div class="label">Transferencias</div><div class="val blue">'+fmtARS(totalTransf)+'</div></div>';
-  html+='<div class="rpt-card"><div class="label">Echeq</div><div class="val amber">'+fmtARS(totalEcheq)+'</div></div>';
-  if(totalOtros>0) html+='<div class="rpt-card"><div class="label">Otros medios</div><div class="val">'+fmtARS(totalOtros)+'</div></div>';
+  var wPlazo=0,wWeight=0;
+  sel.forEach(function(o){var p=parsePlazoAvg(o.plazo);if(p>0){var w=efectivoARS(o);wPlazo+=p*w;wWeight+=w;}});
+  var avgPlazo=wWeight>0?wPlazo/wWeight:0;
+  var plazoColor=avgPlazo>=30?'green':avgPlazo>=20?'amber':'red';
+  var plazoStatus=avgPlazo>=30?'Cumple meta':'Por debajo';
+
+  var pctTransf=totalEquiv>0?Math.round(totalTransf/totalEquiv*100):0;
+  var pctEcheq=totalEquiv>0?Math.round(totalEcheq/totalEquiv*100):0;
+  var pctOtros=100-pctTransf-pctEcheq;
+  var usdCount=sel.filter(function(o){return o.moneda==='USD';}).length;
+
+  var today=new Date();
+  var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+
+  var html='<div class="rpt-print-header"><h1>Reporte de Pagos Semanal</h1><p>Hijos de Salvador Muñoz S.A. &mdash; '+fechaStr+'</p></div>';
+
+  html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir Reporte</button></div>';
+
+  html+='<div class="rpt-indicators">';
+  html+='<div class="rpt-ind '+plazoColor+'"><div class="ind-label">Plazo Promedio</div><div class="ind-val">'+Math.round(avgPlazo)+'<small style="font-size:.6em"> d</small></div><div class="ind-bar"><div class="ind-bar-fill" style="width:'+Math.min(100,avgPlazo/60*100)+'%"></div></div><div class="ind-sub" style="color:var(--'+(plazoColor==='green'?'acc':plazoColor==='amber'?'warn':'danger')+')">Meta: &ge; 30 d &mdash; '+plazoStatus+'</div></div>';
+  html+='<div class="rpt-ind blue"><div class="ind-label">Total Equivalente</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalEquiv)+'</div>'+(hasUSD?'<div class="ind-sub" style="color:var(--text-muted)">'+usdCount+' OC en USD</div>':'')+'</div>';
+  html+='<div class="rpt-ind green"><div class="ind-label">Transferencias</div><div class="ind-val">'+pctTransf+'<small style="font-size:.6em">%</small></div><div class="ind-bar"><div class="ind-bar-fill" style="width:'+pctTransf+'%"></div></div><div class="ind-sub">'+fmtARS(totalTransf)+'</div></div>';
+  html+='<div class="rpt-ind amber"><div class="ind-label">Echeq</div><div class="ind-val">'+pctEcheq+'<small style="font-size:.6em">%</small></div><div class="ind-bar"><div class="ind-bar-fill" style="width:'+pctEcheq+'%"></div></div><div class="ind-sub">'+fmtARS(totalEcheq)+'</div></div>';
+  html+='</div>';
+
+  html+='<div class="rpt-dash">';
+  html+='<div class="rpt-chart-box"><h3>Distribucion por Forma de Pago</h3><canvas id="chart-pago"></canvas></div>';
+  html+='<div class="rpt-chart-box"><h3>Top Sectores por Monto</h3><canvas id="chart-sector"></canvas></div>';
   html+='</div>';
 
   var sectorMap={};
@@ -647,7 +722,8 @@ function renderReport(){
   html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Sector</th><th>Cant</th><th style="text-align:right">ARS</th>';
   if(hasUSD) html+='<th style="text-align:right">USD</th>';
   html+='<th style="text-align:right">Equiv. ARS</th><th>Plazos</th></tr></thead><tbody>';
-  Object.entries(sectorMap).sort(function(a,b){return b[1].equiv-a[1].equiv;}).forEach(function(e){
+  var sectorSorted=Object.entries(sectorMap).sort(function(a,b){return b[1].equiv-a[1].equiv;});
+  sectorSorted.forEach(function(e){
     var s=e[0],d=e[1];var plazoStr=[...new Set(d.plazos)].join(', ');
     html+='<tr><td>'+esc(s)+'</td><td>'+d.count+'</td><td class="num">'+fmtARS(d.ars)+'</td>';
     if(hasUSD) html+='<td class="num">'+(d.usd?fmtUSD(d.usd):'-')+'</td>';
@@ -670,7 +746,8 @@ function renderReport(){
   html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Forma de Pago</th><th>Cant</th><th style="text-align:right">ARS</th>';
   if(hasUSD) html+='<th style="text-align:right">USD</th>';
   html+='<th style="text-align:right">Equiv. ARS</th></tr></thead><tbody>';
-  Object.entries(pagoMap).sort(function(a,b){return b[1].equiv-a[1].equiv;}).forEach(function(e){
+  var pagoSorted=Object.entries(pagoMap).sort(function(a,b){return b[1].equiv-a[1].equiv;});
+  pagoSorted.forEach(function(e){
     var p=e[0],d=e[1];
     html+='<tr><td>'+esc(p)+'</td><td>'+d.count+'</td><td class="num">'+fmtARS(d.ars)+'</td>';
     if(hasUSD) html+='<td class="num">'+(d.usd?fmtUSD(d.usd):'-')+'</td>';
@@ -690,6 +767,33 @@ function renderReport(){
   html+='</tbody></table></div>';
 
   el.innerHTML=html;
+
+  if(typeof Chart==='undefined') return;
+  var txtCol=getComputedStyle(document.documentElement).getPropertyValue('--text').trim()||'#333';
+  var mutedCol=getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim()||'#999';
+  var borderCol=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#ddd';
+  var COLORS=['#3a7d5c','#c07c1c','#1e3d59','#a93a31','#6b5b95','#2a9d8f','#d4a574','#e76f51'];
+
+  try{
+    var pagoLabels=pagoSorted.map(function(e){return e[0];});
+    var pagoVals=pagoSorted.map(function(e){return e[1].equiv;});
+    var c1=new Chart(document.getElementById('chart-pago'),{
+      type:'doughnut',
+      data:{labels:pagoLabels,datasets:[{data:pagoVals,backgroundColor:COLORS.slice(0,pagoLabels.length),borderWidth:1,borderColor:borderCol}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11},padding:10}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmtARS(ctx.raw)+' ('+Math.round(ctx.raw/totalEquiv*100)+'%)';}}}},animation:{duration:600}}
+    });
+    chartInstances.push(c1);
+
+    var topSectors=sectorSorted.slice(0,10);
+    var secLabels=topSectors.map(function(e){return e[0];});
+    var secVals=topSectors.map(function(e){return e[1].equiv;});
+    var c2=new Chart(document.getElementById('chart-sector'),{
+      type:'bar',
+      data:{labels:secLabels,datasets:[{data:secVals,backgroundColor:'#1e3d59',borderRadius:4,barThickness:18}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmtARS(ctx.raw);}}}},scales:{x:{grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(0)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}},y:{grid:{display:false},ticks:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}}},animation:{duration:600}}
+    });
+    chartInstances.push(c2);
+  }catch(e){}
 }
 
 function exportData(){
