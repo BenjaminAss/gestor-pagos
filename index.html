@@ -177,7 +177,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   body{background:#fff !important;color:#1a1a18 !important;font-size:10pt}
   .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay{display:none !important}
   .workspace{display:block !important;height:auto !important}
-  .report{display:block !important;overflow:visible !important;padding:0 !important}
+  .report{overflow:visible !important;padding:0 !important}
   #tab-orders{display:none !important}
   .rpt-print-header{display:block !important;text-align:center;margin-bottom:1.2rem;padding-bottom:.8rem;border-bottom:2px solid #1e3d59}
   .rpt-print-header h1{font-size:14pt;color:#1e3d59;margin-bottom:.15rem}
@@ -261,6 +261,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   <div class="tabs">
     <button class="tab active" data-tab="orders">Ordenes</button>
     <button class="tab" data-tab="report">Reporte</button>
+    <button class="tab" data-tab="planilla">Planilla de Pagos</button>
   </div>
   <div class="toolbar" id="toolbar">
     <input type="search" id="search" placeholder="Buscar proveedor u OC...">
@@ -284,6 +285,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
     <div class="empty" id="empty" style="display:none">No se encontraron ordenes con ese filtro</div>
   </div>
   <div class="report" id="tab-report"></div>
+  <div class="report" id="tab-planilla"></div>
   <div class="export-bar">
     <span class="stat"><b id="exp-count">0</b> seleccionadas</span>
     <span class="stat">Total: <b id="exp-total">$0</b></span>
@@ -657,6 +659,7 @@ function render(){
   tbody.innerHTML=html;
   updateStats();
   if(activeTab==='report') renderReport();
+  if(activeTab==='planilla') renderPlanilla();
 }
 
 function updateStats(){
@@ -720,7 +723,9 @@ function switchTab(tab){
   document.getElementById('tab-orders').style.display=tab==='orders'?'':'none';
   document.getElementById('toolbar').style.display=tab==='orders'?'':'none';
   document.getElementById('tab-report').style.display=tab==='report'?'block':'none';
+  document.getElementById('tab-planilla').style.display=tab==='planilla'?'block':'none';
   if(tab==='report') renderReport();
+  if(tab==='planilla') renderPlanilla();
 }
 
 var chartInstances=[];
@@ -846,7 +851,7 @@ function renderReport(){
       if(!provMap[prov]) provMap[prov]=0;
       provMap[prov]+=efectivoARS(o);
     });
-    var paretoData=Object.entries(provMap).sort(function(a,b){return b[1]-a[1];});
+    var paretoData=Object.entries(provMap).sort(function(a,b){return b[1]-a[1];}).slice(0,20);
     var paretoLabels=paretoData.map(function(e){return e[0].length>25?e[0].substring(0,22)+'...':e[0];});
     var paretoVals=paretoData.map(function(e){return e[1];});
     var paretoTotal=paretoVals.reduce(function(a,b){return a+b;},0);
@@ -906,6 +911,84 @@ function renderReport(){
       }]
     });
     chartInstances.push(c3);
+  }catch(e){}
+}
+
+function renderPlanilla(){
+  destroyCharts();
+  var el=document.getElementById('tab-planilla');
+  var sel=[...state.selected].map(function(i){return state.orders[i];}).filter(Boolean);
+  if(!sel.length){el.innerHTML='<div class="rpt-empty">Selecciona ordenes para ver la planilla de pagos</div>';return;}
+
+  var provMap={};
+  sel.forEach(function(o){
+    var prov=o.proveedor||'Sin proveedor';
+    if(!provMap[prov]) provMap[prov]={equiv:0,transf:0,echeq:0,orders:[]};
+    var m=provMap[prov];
+    var sp=splitTransfEcheq(o);
+    m.equiv+=efectivoARS(o);m.transf+=sp.transf;m.echeq+=sp.echeq;
+    m.orders.push(o);
+  });
+  var provSorted=Object.entries(provMap).sort(function(a,b){return b[1].equiv-a[1].equiv;});
+  var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
+  var totalTransf=0,totalEcheq=0;
+  sel.forEach(function(o){var sp=splitTransfEcheq(o);totalTransf+=sp.transf;totalEcheq+=sp.echeq;});
+
+  var today=new Date();
+  var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+
+  var html='<div class="rpt-print-header"><h1>Planilla de Pagos Semanal</h1><p>Hijos de Salvador Muñoz S.A. &mdash; '+fechaStr+'</p></div>';
+  html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir Planilla</button></div>';
+
+  html+='<div class="rpt-indicators">';
+  html+='<div class="rpt-ind blue"><div class="ind-label">Total a Pagar</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalEquiv)+'</div><div class="ind-sub" style="color:var(--text-muted)">'+sel.length+' ordenes &mdash; '+provSorted.length+' proveedores</div></div>';
+  html+='<div class="rpt-ind green"><div class="ind-label">Transferencias</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalTransf)+'</div></div>';
+  html+='<div class="rpt-ind amber"><div class="ind-label">Echeq</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalEcheq)+'</div></div>';
+  html+='</div>';
+
+  html+='<div class="rpt-chart-box" style="height:'+(Math.max(300,provSorted.length*28+60))+'px;margin-bottom:1.5rem"><h3>Pagos por Proveedor</h3><canvas id="chart-planilla"></canvas></div>';
+
+  html+='<h2>Planilla de Pagos</h2>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th style="width:30px">#</th><th>Proveedor</th><th style="text-align:right">Transferencias</th><th style="text-align:right">Echeq</th><th style="text-align:right">Total Equiv. ARS</th><th style="text-align:right">%</th></tr></thead><tbody>';
+  provSorted.forEach(function(e,idx){
+    var prov=e[0],d=e[1];
+    var pct=totalEquiv>0?Math.round(d.equiv/totalEquiv*1000)/10:0;
+    html+='<tr><td style="text-align:center;color:var(--text-muted);font-size:.74rem">'+(idx+1)+'</td><td>'+esc(prov)+'</td><td class="num">'+fmtARS(d.transf)+'</td><td class="num">'+fmtARS(d.echeq)+'</td><td class="num">'+fmtARS(d.equiv)+'</td><td class="num">'+pct+'%</td></tr>';
+  });
+  html+='<tr class="rpt-total"><td></td><td>TOTAL</td><td class="num">'+fmtARS(totalTransf)+'</td><td class="num">'+fmtARS(totalEcheq)+'</td><td class="num">'+fmtARS(totalEquiv)+'</td><td class="num">100%</td></tr>';
+  html+='</tbody></table></div>';
+
+  el.innerHTML=html;
+
+  if(typeof Chart==='undefined') return;
+  var txtCol=getComputedStyle(document.documentElement).getPropertyValue('--text').trim()||'#333';
+  var mutedCol=getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim()||'#999';
+  var borderCol=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#ddd';
+
+  try{
+    var labels=provSorted.map(function(e){return e[0].length>35?e[0].substring(0,32)+'...':e[0];});
+    var transfVals=provSorted.map(function(e){return e[1].transf;});
+    var echeqVals=provSorted.map(function(e){return e[1].echeq;});
+    var c=new Chart(document.getElementById('chart-planilla'),{
+      type:'bar',
+      data:{labels:labels,datasets:[
+        {label:'Transferencias',data:transfVals,backgroundColor:'#3a7d5c',borderRadius:3,barThickness:16},
+        {label:'Echeq',data:echeqVals,backgroundColor:'#c07c1c',borderRadius:3,barThickness:16}
+      ]},
+      options:{
+        indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}},
+          tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtARS(ctx.raw);}}}
+        },
+        scales:{
+          x:{stacked:true,grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}},
+          y:{stacked:true,grid:{display:false},ticks:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}}
+        },
+        animation:{duration:600}
+      }
+    });
+    chartInstances.push(c);
   }catch(e){}
 }
 
