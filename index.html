@@ -689,9 +689,9 @@ var chartInstances=[];
 function destroyCharts(){chartInstances.forEach(function(c){c.destroy();});chartInstances=[];}
 
 function parsePlazoAvg(plazo){
-  if(!plazo) return 0;
-  var parts=String(plazo).split(/[-\/]/).map(Number).filter(function(n){return !isNaN(n)&&n>0;});
-  if(!parts.length) return 0;
+  if(plazo===''||plazo==null) return null;
+  var parts=String(plazo).split(/[-\/]/).map(function(s){return s.trim();}).filter(Boolean).map(Number).filter(function(n){return !isNaN(n)&&n>=0;});
+  if(!parts.length) return null;
   return parts.reduce(function(a,b){return a+b;},0)/parts.length;
 }
 
@@ -710,7 +710,7 @@ function renderReport(){
   var hasUSD=totalUSD>0;
 
   var wPlazo=0,wWeight=0;
-  sel.forEach(function(o){var p=parsePlazoAvg(o.plazo);if(p>0){var w=efectivoARS(o);wPlazo+=p*w;wWeight+=w;}});
+  sel.forEach(function(o){var p=parsePlazoAvg(o.plazo);if(p!==null){var w=efectivoARS(o);wPlazo+=p*w;wWeight+=w;}});
   var avgPlazo=wWeight>0?wPlazo/wWeight:0;
   var plazoColor=avgPlazo>=30?'green':avgPlazo>=20?'amber':'red';
   var plazoStatus=avgPlazo>=30?'Cumple meta':'Por debajo';
