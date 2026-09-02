@@ -281,7 +281,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 <datalist id="sector-list"></datalist>
 
 <script>
-var PAGOS=['Transferencia','Echeq','Contado','Cheque','Plataforma NERA','A Definir','Transferencia + Echeq'];
+var PAGOS=['Transferencia','Echeq','Contado','Plataforma NERA','A Definir','Transferencia + Echeq'];
 var SKEY='gestor-pagos-v3';
 var activeTab='orders';
 
@@ -318,7 +318,7 @@ function extractPagoYPct(d){
     if(p.includes('a definir')) return {pago:'A Definir',pct:100};
     return {pago:m[1].trim(),pct:100};}
   if(u.includes('CONTADO EFECTIVO')||u.includes('PAGO DE CONTADO')) return {pago:'Contado',pct:100};
-  if(u.trim()==='CHEQUE'||u.split(/\s+/).includes('CHEQUE')) return {pago:'Cheque',pct:100};
+  if(u.trim()==='CHEQUE'||u.split(/\s+/).includes('CHEQUE')) return {pago:'Echeq',pct:100};
   return {pago:'Transferencia',pct:100};
 }
 
@@ -360,7 +360,8 @@ function loadBacklog(){
       moneda:o.moneda||'ARS',
       tipoCambio:o.tipoCambio||1,
       porcentaje:o.porcentaje!=null?o.porcentaje:100,
-      plazo:o.plazo!=null?String(o.plazo):''
+      plazo:o.plazo!=null?String(o.plazo):'',
+      pago:o.pago==='Cheque'?'Echeq':(o.pago||'A Definir')
     });});
     state.selected=new Set();
     state.orders.forEach(function(o,i){if(o.selected) state.selected.add(i);});
@@ -881,7 +882,7 @@ function exportData(){
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalTransf=sel.filter(function(o){return o.pago==='Transferencia';}).reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalEcheq=sel.filter(function(o){return o.pago==='Echeq';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalContado=sel.filter(function(o){return o.pago==='Contado'||o.pago==='Cheque';}).reduce(function(s,o){return s+efectivoARS(o);},0);
+  var totalContado=sel.filter(function(o){return o.pago==='Contado';}).reduce(function(s,o){return s+efectivoARS(o);},0);
   d1.push([],['TOTAL EQUIVALENTE ARS','','','','','','','',totalEquiv,'',''],
     [],['TOTAL TRANSFERENCIAS','','','','','','','',totalTransf,'',''],
     ['TOTAL ECHEQ','','','','','','','',totalEcheq,'',''],
