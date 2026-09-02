@@ -297,7 +297,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 <datalist id="sector-list"></datalist>
 
 <script>
-var PAGOS=['Transferencia','Echeq','Contado','Plataforma NERA','A Definir','Transferencia + Echeq'];
+var PAGOS=['Transferencia','Echeq','Transferencia + Echeq'];
 var SKEY='gestor-pagos-v3';
 var activeTab='orders';
 
@@ -351,12 +351,34 @@ function extractPagoYPct(d){
     if(p.includes('echeq')&&p.includes('transferencia')) return {pago:'Transferencia + Echeq',pct:100};
     if(p.includes('echeq')) return {pago:'Echeq',pct:100};
     if(p.includes('transferencia')) return {pago:'Transferencia',pct:100};
-    if(p.includes('plataforma')||p.includes('nera')) return {pago:'Plataforma NERA',pct:100};
-    if(p.includes('a definir')) return {pago:'A Definir',pct:100};
-    return {pago:m[1].trim(),pct:100};}
-  if(u.includes('CONTADO EFECTIVO')||u.includes('PAGO DE CONTADO')) return {pago:'Contado',pct:100};
+    return {pago:'Transferencia',pct:100};}
+  if(u.includes('CONTADO')||u.includes('IMPORTACION')||u.includes('IMPORTACIÓN')) return {pago:'Transferencia',pct:100};
   if(u.trim()==='CHEQUE'||u.split(/\s+/).includes('CHEQUE')) return {pago:'Echeq',pct:100};
   return {pago:'Transferencia',pct:100};
+}
+
+function normalizePago(p){
+  if(!p) return 'Transferencia';
+  if(p==='Contado'||p==='A Definir'||p==='Plataforma NERA') return 'Transferencia';
+  return p;
+}
+
+function splitTransfEcheq(o){
+  var ars=efectivoARS(o);
+  if(o.pago==='Transferencia') return {transf:ars,echeq:0};
+  if(o.pago==='Echeq') return {transf:0,echeq:ars};
+  if(o.pago==='Transferencia + Echeq'){
+    var plazo=String(o.plazo||'');
+    var parts=plazo.split(/[-\/]/).map(function(s){return s.trim();}).filter(Boolean).map(Number).filter(function(n){return !isNaN(n)&&n>=0;});
+    if(parts.length<2) return {transf:ars/2,echeq:ars/2};
+    var transfParts=parts.filter(function(n){return n===0;}).length;
+    var echeqParts=parts.length-transfParts;
+    if(transfParts===0) transfParts=1;
+    if(echeqParts===0) echeqParts=1;
+    var perPart=ars/parts.length;
+    return {transf:perPart*transfParts,echeq:perPart*echeqParts};
+  }
+  return {transf:ars,echeq:0};
 }
 
 function extractPlazo(d){
@@ -398,7 +420,7 @@ function loadBacklog(){
       tipoCambio:o.tipoCambio||1,
       porcentaje:o.porcentaje!=null?o.porcentaje:100,
       plazo:o.plazo!=null?String(o.plazo):'',
-      pago:o.pago==='Cheque'?'Echeq':(o.pago||'A Definir'),
+      pago:normalizePago(o.pago==='Cheque'?'Echeq':o.pago),
       sector:normalizeSector(o.sector)
     });});
     state.selected=new Set();
@@ -640,8 +662,8 @@ function render(){
 function updateStats(){
   var sel=[...state.selected].map(function(i){return state.orders[i];}).filter(Boolean);
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalTransf=sel.filter(function(o){return o.pago==='Transferencia';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalEcheq=sel.filter(function(o){return o.pago==='Echeq';}).reduce(function(s,o){return s+efectivoARS(o);},0);
+  var totalTransf=0,totalEcheq=0;
+  sel.forEach(function(o){var sp=splitTransfEcheq(o);totalTransf+=sp.transf;totalEcheq+=sp.echeq;});
   var usdCount=sel.filter(function(o){return o.moneda==='USD';}).length;
   var usdTotal=sel.filter(function(o){return o.moneda==='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
 
@@ -720,9 +742,8 @@ function renderReport(){
   var totalARS=sel.filter(function(o){return o.moneda!=='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
   var totalUSD=sel.filter(function(o){return o.moneda==='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalTransf=sel.filter(function(o){return o.pago==='Transferencia';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalEcheq=sel.filter(function(o){return o.pago==='Echeq';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalOtros=totalEquiv-totalTransf-totalEcheq;
+  var totalTransf=0,totalEcheq=0;
+  sel.forEach(function(o){var sp=splitTransfEcheq(o);totalTransf+=sp.transf;totalEcheq+=sp.echeq;});
   var hasUSD=totalUSD>0;
 
   var wPlazo=0,wWeight=0;
@@ -733,7 +754,6 @@ function renderReport(){
 
   var pctTransf=totalEquiv>0?Math.round(totalTransf/totalEquiv*100):0;
   var pctEcheq=totalEquiv>0?Math.round(totalEcheq/totalEquiv*100):0;
-  var pctOtros=100-pctTransf-pctEcheq;
   var usdCount=sel.filter(function(o){return o.moneda==='USD';}).length;
 
   var today=new Date();
@@ -759,52 +779,30 @@ function renderReport(){
 
   var sectorMap={};
   sel.forEach(function(o){
-    if(!sectorMap[o.sector]) sectorMap[o.sector]={ars:0,usd:0,equiv:0,count:0,plazos:[]};
-    var m=sectorMap[o.sector];var ef=efectivo(o);
-    if(o.moneda==='USD') m.usd+=ef; else m.ars+=ef;
-    m.equiv+=efectivoARS(o);m.count++;
+    if(!sectorMap[o.sector]) sectorMap[o.sector]={equiv:0,transf:0,echeq:0,count:0,plazos:[]};
+    var m=sectorMap[o.sector];
+    var sp=splitTransfEcheq(o);
+    m.equiv+=efectivoARS(o);m.transf+=sp.transf;m.echeq+=sp.echeq;m.count++;
     if(o.plazo) m.plazos.push(o.plazo);
   });
 
   html+='<h2>Resumen por Sector</h2>';
-  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Sector</th><th>Cant</th><th style="text-align:right">ARS</th>';
-  if(hasUSD) html+='<th style="text-align:right">USD</th>';
-  html+='<th style="text-align:right">Equiv. ARS</th><th>Plazos</th></tr></thead><tbody>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Sector</th><th>Cant</th><th style="text-align:right">Transferencias</th><th style="text-align:right">Echeq</th><th style="text-align:right">Total</th><th>Plazos</th></tr></thead><tbody>';
   var sectorSorted=Object.entries(sectorMap).sort(function(a,b){return b[1].equiv-a[1].equiv;});
   sectorSorted.forEach(function(e){
     var s=e[0],d=e[1];var plazoStr=[...new Set(d.plazos)].join(', ');
-    html+='<tr><td>'+esc(s)+'</td><td>'+d.count+'</td><td class="num">'+fmtARS(d.ars)+'</td>';
-    if(hasUSD) html+='<td class="num">'+(d.usd?fmtUSD(d.usd):'-')+'</td>';
-    html+='<td class="num">'+fmtARS(d.equiv)+'</td><td style="font-size:.76rem">'+esc(plazoStr)+'</td></tr>';
+    html+='<tr><td>'+esc(s)+'</td><td>'+d.count+'</td><td class="num">'+fmtARS(d.transf)+'</td><td class="num">'+fmtARS(d.echeq)+'</td><td class="num">'+fmtARS(d.equiv)+'</td><td style="font-size:.76rem">'+esc(plazoStr)+'</td></tr>';
   });
-  html+='<tr class="rpt-total"><td>TOTAL</td><td>'+sel.length+'</td><td class="num">'+fmtARS(totalARS)+'</td>';
-  if(hasUSD) html+='<td class="num">'+fmtUSD(totalUSD)+'</td>';
-  html+='<td class="num">'+fmtARS(totalEquiv)+'</td><td></td></tr>';
+  html+='<tr class="rpt-total"><td>TOTAL</td><td>'+sel.length+'</td><td class="num">'+fmtARS(totalTransf)+'</td><td class="num">'+fmtARS(totalEcheq)+'</td><td class="num">'+fmtARS(totalEquiv)+'</td><td></td></tr>';
   html+='</tbody></table></div>';
-
-  var pagoMap={};
-  sel.forEach(function(o){
-    if(!pagoMap[o.pago]) pagoMap[o.pago]={ars:0,usd:0,equiv:0,count:0};
-    var m=pagoMap[o.pago];var ef=efectivo(o);
-    if(o.moneda==='USD') m.usd+=ef; else m.ars+=ef;
-    m.equiv+=efectivoARS(o);m.count++;
-  });
 
   html+='<h2>Resumen por Forma de Pago</h2>';
-  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Forma de Pago</th><th>Cant</th><th style="text-align:right">ARS</th>';
-  if(hasUSD) html+='<th style="text-align:right">USD</th>';
-  html+='<th style="text-align:right">Equiv. ARS</th></tr></thead><tbody>';
-  var pagoSorted=Object.entries(pagoMap).sort(function(a,b){return b[1].equiv-a[1].equiv;});
-  pagoSorted.forEach(function(e){
-    var p=e[0],d=e[1];
-    html+='<tr><td>'+esc(p)+'</td><td>'+d.count+'</td><td class="num">'+fmtARS(d.ars)+'</td>';
-    if(hasUSD) html+='<td class="num">'+(d.usd?fmtUSD(d.usd):'-')+'</td>';
-    html+='<td class="num">'+fmtARS(d.equiv)+'</td></tr>';
-  });
-  html+='<tr class="rpt-total"><td>TOTAL</td><td>'+sel.length+'</td><td class="num">'+fmtARS(totalARS)+'</td>';
-  if(hasUSD) html+='<td class="num">'+fmtUSD(totalUSD)+'</td>';
-  html+='<td class="num">'+fmtARS(totalEquiv)+'</td></tr>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Forma de Pago</th><th style="text-align:right">Monto ARS</th><th style="text-align:right">%</th></tr></thead><tbody>';
+  html+='<tr><td>Transferencias</td><td class="num">'+fmtARS(totalTransf)+'</td><td class="num">'+pctTransf+'%</td></tr>';
+  html+='<tr><td>Echeq</td><td class="num">'+fmtARS(totalEcheq)+'</td><td class="num">'+pctEcheq+'%</td></tr>';
+  html+='<tr class="rpt-total"><td>TOTAL</td><td class="num">'+fmtARS(totalEquiv)+'</td><td class="num">100%</td></tr>';
   html+='</tbody></table></div>';
+  var pagoSorted=[['Transferencia',{equiv:totalTransf}],['Echeq',{equiv:totalEcheq}]];
 
   html+='<h2>Detalle de Ordenes Seleccionadas</h2>';
   html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>OC</th><th>Proveedor</th><th>Sector</th><th>Mon</th><th>TC</th><th style="text-align:right">Importe</th><th>%</th><th style="text-align:right">A Pagar</th><th style="text-align:right">Equiv. ARS</th><th>Forma</th><th>Plazo</th></tr></thead><tbody>';
@@ -922,13 +920,11 @@ function exportData(){
     [],['Nro OC','Proveedor','Sector','Moneda','TC','Importe Original','%','Importe a Pagar','Equiv. ARS','Forma de Pago','Plazo']];
   var d1=sel.map(function(o){var ef=efectivo(o);return [o.oc,o.proveedor,o.sector,o.moneda,o.moneda==='USD'?(o.tipoCambio||''):1,o.total,o.porcentaje||100,ef,efectivoARS(o),o.pago,o.plazo||''];});
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalTransf=sel.filter(function(o){return o.pago==='Transferencia';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalEcheq=sel.filter(function(o){return o.pago==='Echeq';}).reduce(function(s,o){return s+efectivoARS(o);},0);
-  var totalContado=sel.filter(function(o){return o.pago==='Contado';}).reduce(function(s,o){return s+efectivoARS(o);},0);
+  var xTotalTransf=0,xTotalEcheq=0;
+  sel.forEach(function(o){var sp=splitTransfEcheq(o);xTotalTransf+=sp.transf;xTotalEcheq+=sp.echeq;});
   d1.push([],['TOTAL EQUIVALENTE ARS','','','','','','','',totalEquiv,'',''],
-    [],['TOTAL TRANSFERENCIAS','','','','','','','',totalTransf,'',''],
-    ['TOTAL ECHEQ','','','','','','','',totalEcheq,'',''],
-    ['TOTAL CONTADO / CHEQUE','','','','','','','',totalContado,'','']);
+    [],['TOTAL TRANSFERENCIAS','','','','','','','',xTotalTransf,'',''],
+    ['TOTAL ECHEQ','','','','','','','',xTotalEcheq,'','']);
   var ws1=XLSX.utils.aoa_to_sheet(h1.concat(d1));
   ws1['!cols']=[{wch:18},{wch:45},{wch:22},{wch:8},{wch:10},{wch:16},{wch:6},{wch:16},{wch:18},{wch:22},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws1,'Detalle de Pagos');
