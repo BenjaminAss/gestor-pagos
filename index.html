@@ -300,7 +300,28 @@ function extractSector(d){
   var map={'IMPLESA':'IMPLESA','TYLSA':'TYLSA','PICSA':'PICSA','VIALSA':'VIALSA','FLOTA LIVIANA':'Flota Liviana','rrhh':'Recursos Humanos','RRHH':'Recursos Humanos','FUMIGACION':'Fumigacion','viandas':'Viandas','granos':'Granos','Empaque Bananas':'Empaque','Colonia banana':'Colonia','Colonia Banana':'Colonia','Deposito Hortalizas':'Deposito Hortalizas','Taller Metalurgico':'Taller','TALLER':'Taller','Transp aereo':'Transporte Aereo','P. tuma':'Tuma','Emb invernaderos':'Emb Invernaderos','Zanja de tigre':'Zanja','Zanja Feedlot':'Zanja','Zanja feedlot':'Zanja','Sectores varios':'Sectores Varios','Taller Metalúrgico':'Taller','Administracion Salta':'Administracion','Administración Salta':'Administracion','Centro de Distribución':'Centro de Distribucion'};
   if(map[s]) s=map[s];
   if(s[0]&&s[0]===s[0].toLowerCase()) s=s[0].toUpperCase()+s.slice(1);
-  return s;
+  return normalizeSector(s);
+}
+
+function normalizeSector(s){
+  if(!s) return 'Sin Especificar';
+  var n=s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  var low=n.toLowerCase();
+  var ABBREVS={
+    'admn':'administracion','admin':'administracion','adm':'administracion',
+    'transp':'transporte','emb':'embarcacion','depto':'departamento',
+    'dpto':'departamento','mant':'mantenimiento','prod':'produccion',
+    'log':'logistica','frig':'frigorifico','lab':'laboratorio',
+    'sist':'sistemas','ctro':'centro','distr':'distribucion','p':'puerto'
+  };
+  var words=low.replace(/\./g,' ').replace(/\s+/g,' ').trim().split(' ');
+  var expanded=words.map(function(w){return ABBREVS[w]||w;});
+  var key=expanded.join(' ');
+  if(!normalizeSector._cache) normalizeSector._cache={};
+  if(normalizeSector._cache[key]) return normalizeSector._cache[key];
+  var result=expanded.map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
+  normalizeSector._cache[key]=result;
+  return result;
 }
 
 function extractPagoYPct(d){
@@ -361,7 +382,8 @@ function loadBacklog(){
       tipoCambio:o.tipoCambio||1,
       porcentaje:o.porcentaje!=null?o.porcentaje:100,
       plazo:o.plazo!=null?String(o.plazo):'',
-      pago:o.pago==='Cheque'?'Echeq':(o.pago||'A Definir')
+      pago:o.pago==='Cheque'?'Echeq':(o.pago||'A Definir'),
+      sector:normalizeSector(o.sector)
     });});
     state.selected=new Set();
     state.orders.forEach(function(o,i){if(o.selected) state.selected.add(i);});
