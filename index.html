@@ -140,7 +140,9 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 .rpt-empty{text-align:center;padding:3rem;color:var(--text-muted);font-size:.9rem}
 
 .rpt-dash{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
-.rpt-chart-box{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:1rem;min-height:220px;position:relative}
+.rpt-chart-box{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:1rem;height:300px;position:relative}
+.rpt-chart-box.tall{height:400px}
+.rpt-chart-box canvas{max-height:100%}
 .rpt-chart-box h3{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:.6rem}
 .rpt-indicators{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem;margin-bottom:1.5rem}
 .rpt-ind{padding:.7rem .9rem;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;text-align:center}
@@ -170,7 +172,8 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .rpt-cards{grid-template-columns:repeat(3,1fr) !important}
   .rpt-card{border:1px solid #ccc !important;background:#f8f8f8 !important}
   .rpt-dash{grid-template-columns:1fr 1fr !important}
-  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;page-break-inside:avoid}
+  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;page-break-inside:avoid;height:280px !important}
+  .rpt-chart-box.tall{height:360px !important}
   .rpt-indicators{grid-template-columns:repeat(4,1fr) !important}
   .rpt-ind{border:1px solid #ccc !important}
   .rpt-table-wrap{page-break-inside:auto}
@@ -709,6 +712,8 @@ function renderReport(){
   html+='<div class="rpt-chart-box"><h3>Top Sectores por Monto</h3><canvas id="chart-sector"></canvas></div>';
   html+='</div>';
 
+  html+='<div class="rpt-chart-box tall" style="margin-bottom:1.5rem"><h3>Pareto de Pagos &mdash; Analisis 80/20</h3><canvas id="chart-pareto"></canvas></div>';
+
   var sectorMap={};
   sel.forEach(function(o){
     if(!sectorMap[o.sector]) sectorMap[o.sector]={ars:0,usd:0,equiv:0,count:0,plazos:[]};
@@ -793,6 +798,73 @@ function renderReport(){
       options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmtARS(ctx.raw);}}}},scales:{x:{grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(0)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}},y:{grid:{display:false},ticks:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}}},animation:{duration:600}}
     });
     chartInstances.push(c2);
+
+    var provMap={};
+    sel.forEach(function(o){
+      var prov=o.proveedor||'Sin proveedor';
+      if(!provMap[prov]) provMap[prov]=0;
+      provMap[prov]+=efectivoARS(o);
+    });
+    var paretoData=Object.entries(provMap).sort(function(a,b){return b[1]-a[1];});
+    var paretoLabels=paretoData.map(function(e){return e[0].length>25?e[0].substring(0,22)+'...':e[0];});
+    var paretoVals=paretoData.map(function(e){return e[1];});
+    var paretoTotal=paretoVals.reduce(function(a,b){return a+b;},0);
+    var cumPct=[];var cum=0;
+    paretoVals.forEach(function(v){cum+=v;cumPct.push(Math.round(cum/paretoTotal*1000)/10);});
+
+    var threshold80idx=cumPct.findIndex(function(p){return p>=80;});
+
+    var barColors=paretoVals.map(function(_,i){return i<=threshold80idx?'#1e3d59':'#a0b8c8';});
+
+    var c3=new Chart(document.getElementById('chart-pareto'),{
+      type:'bar',
+      data:{
+        labels:paretoLabels,
+        datasets:[
+          {type:'bar',label:'Monto',data:paretoVals,backgroundColor:barColors,borderRadius:4,yAxisID:'y',order:2},
+          {type:'line',label:'% Acumulado',data:cumPct,borderColor:'#c07c1c',backgroundColor:'rgba(192,124,28,0.1)',pointBackgroundColor:'#c07c1c',pointRadius:4,borderWidth:2,fill:false,yAxisID:'y1',order:1}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}},
+          tooltip:{callbacks:{label:function(ctx){
+            if(ctx.datasetIndex===0) return 'Monto: '+fmtARS(ctx.raw);
+            return 'Acumulado: '+ctx.raw+'%';
+          }}},
+          annotation:undefined
+        },
+        scales:{
+          x:{grid:{display:false},ticks:{color:txtCol,font:{size:10},maxRotation:45}},
+          y:{position:'left',grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}},
+          y1:{position:'right',min:0,max:100,grid:{drawOnChartArea:false},ticks:{color:'#c07c1c',font:{size:10},callback:function(v){return v+'%';}}}
+        },
+        animation:{duration:600}
+      },
+      plugins:[{
+        id:'pareto80',
+        afterDraw:function(chart){
+          var yScale=chart.scales.y1;
+          var y80=yScale.getPixelForValue(80);
+          var ctx=chart.ctx;
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([6,4]);
+          ctx.strokeStyle='#a93a31';
+          ctx.lineWidth=1.5;
+          ctx.moveTo(chart.chartArea.left,y80);
+          ctx.lineTo(chart.chartArea.right,y80);
+          ctx.stroke();
+          ctx.fillStyle='#a93a31';
+          ctx.font='bold 11px Figtree,system-ui,sans-serif';
+          ctx.textAlign='right';
+          ctx.fillText('80%',chart.chartArea.right-4,y80-5);
+          ctx.restore();
+        }
+      }]
+    });
+    chartInstances.push(c3);
   }catch(e){}
 }
 
