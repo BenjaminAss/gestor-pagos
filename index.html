@@ -448,7 +448,11 @@ function rowToOrder(r,fechaIngreso){
   var monRaw=String(r['Moneda']||'').toUpperCase().trim();
   var esUSD=monRaw.indexOf('DOLAR')>=0||monRaw==='USD'||monRaw==='US$';
   var cotizKey=Object.keys(r).find(function(k){return k.match(/^cotizaci/i);});
-  var cotiz=cotizKey?Number(r[cotizKey])||1:1;
+  var cotiz=cotizKey?Number(r[cotizKey]):0;
+  if(esUSD&&cotiz>1){
+    state.tipoCambio=cotiz;
+    document.getElementById('tc-input').value=cotiz;
+  }
   return {
     oc:String(r['Doc-nro int']||'').trim(),
     fecha:r['Fecha']||'',
@@ -460,7 +464,7 @@ function rowToOrder(r,fechaIngreso){
     pago:pp.pago,
     plazo:extractPlazo(desc),
     moneda:esUSD?'USD':'ARS',
-    tipoCambio:esUSD?cotiz:1,
+    tipoCambio:esUSD?(cotiz>1?cotiz:state.tipoCambio):1,
     porcentaje:pp.pct,
     fechaIngreso:fechaIngreso
   };
