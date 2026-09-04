@@ -205,11 +205,10 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   body{background:#fff !important;color:#1a1a18 !important;font-size:8.5pt}
   .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay{display:none !important}
   .workspace{display:block !important;height:auto !important}
-  .report{overflow:visible !important;padding:0 !important}
+  .report{overflow:visible !important;padding:0 !important;height:auto !important}
   #tab-orders{display:none !important}
-  #tab-report{display:none !important}
-  #tab-planilla{display:none !important}
-  .report[id][style*="block"]{display:block !important}
+  #tab-report,#tab-planilla{display:none !important}
+  #tab-report.print-active,#tab-planilla.print-active{display:block !important;overflow:visible !important;padding:0 !important}
   .rpt-print-header{display:block !important;text-align:center;margin-bottom:.6rem;padding-bottom:.5rem;border-bottom:2px solid #1e3d59}
   .rpt-print-header h1{font-size:12pt;color:#1e3d59;margin-bottom:.1rem}
   .rpt-print-header p{font-size:8pt;color:#5a5954}
@@ -768,6 +767,8 @@ function switchTab(tab){
   document.getElementById('toolbar').style.display=tab==='orders'?'':'none';
   document.getElementById('tab-report').style.display=tab==='report'?'block':'none';
   document.getElementById('tab-planilla').style.display=tab==='planilla'?'block':'none';
+  document.getElementById('tab-report').classList.toggle('print-active',tab==='report');
+  document.getElementById('tab-planilla').classList.toggle('print-active',tab==='planilla');
   if(tab==='report') renderReport();
   if(tab==='planilla') renderPlanilla();
 }
