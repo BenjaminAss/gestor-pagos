@@ -195,21 +195,27 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 .rpt-summary-plazo.amber .rpt-summary-plazo-val{color:var(--warn)}
 .rpt-summary-plazo.red .rpt-summary-plazo-val{color:var(--danger)}
 
+.planilla-total{display:flex;justify-content:space-between;align-items:center;padding:.8rem 1.2rem;margin-top:1rem;background:var(--pri);color:#fff;border-radius:8px;font-size:1.1rem;font-weight:700;font-variant-numeric:tabular-nums}
+
 .rpt-print-header{display:none}
 
 @media print{
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
-  @page{size:A4 landscape;margin:12mm 10mm}
-  body{background:#fff !important;color:#1a1a18 !important;font-size:9pt}
-  .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay,#tab-planilla{display:none !important}
+  @page{size:A4 landscape;margin:10mm 12mm}
+  body{background:#fff !important;color:#1a1a18 !important;font-size:8.5pt}
+  .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay{display:none !important}
   .workspace{display:block !important;height:auto !important}
   .report{overflow:visible !important;padding:0 !important}
   #tab-orders{display:none !important}
-  .rpt-print-header{display:block !important;text-align:center;margin-bottom:.8rem;padding-bottom:.6rem;border-bottom:2px solid #1e3d59}
-  .rpt-print-header h1{font-size:13pt;color:#1e3d59;margin-bottom:.1rem}
+  #tab-report{display:none !important}
+  #tab-planilla{display:none !important}
+  .report[id][style*="block"]{display:block !important}
+  .rpt-print-header{display:block !important;text-align:center;margin-bottom:.6rem;padding-bottom:.5rem;border-bottom:2px solid #1e3d59}
+  .rpt-print-header h1{font-size:12pt;color:#1e3d59;margin-bottom:.1rem}
   .rpt-print-header p{font-size:8pt;color:#5a5954}
-  .rpt-summary{border:1px solid #ccc !important;background:#fff !important;padding:.8rem 1rem !important;margin-bottom:.8rem !important;break-inside:avoid}
-  .rpt-summary-amount{font-size:1.3rem !important;color:#1e3d59 !important}
+  .rpt-summary{border:1px solid #ccc !important;background:#fff !important;padding:.6rem .8rem !important;margin-bottom:.6rem !important;break-inside:avoid}
+  .rpt-summary-amount{font-size:1.1rem !important;color:#1e3d59 !important}
+  .rpt-summary-item-body{padding:.35rem .6rem !important}
   .rpt-summary-item.transf .rpt-summary-item-bar{background:rgba(58,125,92,.12) !important}
   .rpt-summary-item.echeq .rpt-summary-item-bar{background:rgba(192,124,28,.12) !important}
   .rpt-summary-item.transf .rpt-summary-item-label{color:#2a5c43 !important}
@@ -217,16 +223,18 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .rpt-summary-plazo.green .rpt-summary-plazo-val{color:#2a5c43 !important}
   .rpt-summary-plazo.amber .rpt-summary-plazo-val{color:#8a5a10 !important}
   .rpt-summary-plazo.red .rpt-summary-plazo-val{color:#a93a31 !important}
-  .rpt-dash{grid-template-columns:1fr 1fr !important;gap:.6rem !important;margin-bottom:.8rem !important;break-inside:avoid}
-  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;page-break-inside:avoid;height:220px !important;padding:.7rem !important}
-  .rpt-chart-box.tall{height:280px !important}
-  .rpt-chart-box h3{font-size:.68rem !important;margin-bottom:.3rem !important}
-  .rpt-table-wrap{page-break-inside:auto;margin-bottom:.4rem !important}
-  .rpt-table{font-size:.72rem !important}
-  .rpt-table th{background:#e8eef3 !important;color:#1a1a18 !important;padding:.3rem .4rem !important;font-size:.66rem !important}
-  .rpt-table td{padding:.25rem .4rem !important}
+  .rpt-dash{grid-template-columns:1fr 1fr !important;gap:.5rem !important;margin-bottom:.6rem !important;break-inside:avoid}
+  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;break-inside:avoid;height:180px !important;padding:.5rem !important}
+  .rpt-chart-box.tall{height:220px !important;break-inside:avoid}
+  .rpt-chart-box h3{font-size:.65rem !important;margin-bottom:.2rem !important}
+  .rpt-table-wrap{break-inside:avoid;margin-bottom:.4rem !important}
+  .rpt-table{font-size:.7rem !important}
+  .rpt-table th{background:#e8eef3 !important;color:#1a1a18 !important;padding:.2rem .35rem !important;font-size:.64rem !important}
+  .rpt-table td{padding:.2rem .35rem !important}
   .rpt-table .rpt-total td{background:#f4f4f1 !important}
-  .report h2{color:#1e3d59 !important;page-break-after:avoid;font-size:.85rem !important;margin:1rem 0 .4rem !important}
+  .rpt-table tr{break-inside:avoid}
+  .report h2{color:#1e3d59 !important;break-after:avoid;font-size:.8rem !important;margin:.7rem 0 .3rem !important}
+  .planilla-total{background:#1e3d59 !important;color:#fff !important;break-inside:avoid;padding:.5rem .8rem !important;font-size:.9rem !important;margin-top:.5rem !important}
   canvas{max-width:100% !important}
 }
 
@@ -958,16 +966,25 @@ function renderPlanilla(){
   var provMap={};
   sel.forEach(function(o){
     var prov=o.proveedor||'Sin proveedor';
-    if(!provMap[prov]) provMap[prov]={equiv:0,transf:0,echeq:0,orders:[]};
+    if(!provMap[prov]) provMap[prov]={equiv:0,transf:0,echeq:0,sectors:new Set()};
     var m=provMap[prov];
     var sp=splitTransfEcheq(o);
     m.equiv+=efectivoARS(o);m.transf+=sp.transf;m.echeq+=sp.echeq;
-    m.orders.push(o);
+    m.sectors.add(o.sector);
   });
-  var provSorted=Object.entries(provMap).sort(function(a,b){return b[1].equiv-a[1].equiv;});
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalTransf=0,totalEcheq=0;
   sel.forEach(function(o){var sp=splitTransfEcheq(o);totalTransf+=sp.transf;totalEcheq+=sp.echeq;});
+
+  var transfRows=[];var echeqRows=[];
+  Object.entries(provMap).forEach(function(e){
+    var prov=e[0],d=e[1];
+    var sectors=[...d.sectors].join(', ');
+    if(d.transf>0) transfRows.push({prov:prov,monto:d.transf,sectors:sectors});
+    if(d.echeq>0) echeqRows.push({prov:prov,monto:d.echeq,sectors:sectors});
+  });
+  transfRows.sort(function(a,b){return b.monto-a.monto;});
+  echeqRows.sort(function(a,b){return b.monto-a.monto;});
 
   var today=new Date();
   var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
@@ -975,56 +992,25 @@ function renderPlanilla(){
   var html='<div class="rpt-print-header"><h1>Planilla de Pagos Semanal</h1><p>Hijos de Salvador Muñoz S.A. &mdash; '+fechaStr+'</p></div>';
   html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir Planilla</button></div>';
 
-  html+='<div class="rpt-indicators">';
-  html+='<div class="rpt-ind blue"><div class="ind-label">Total a Pagar</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalEquiv)+'</div><div class="ind-sub" style="color:var(--text-muted)">'+sel.length+' ordenes &mdash; '+provSorted.length+' proveedores</div></div>';
-  html+='<div class="rpt-ind green"><div class="ind-label">Transferencias</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalTransf)+'</div></div>';
-  html+='<div class="rpt-ind amber"><div class="ind-label">Echeq</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalEcheq)+'</div></div>';
-  html+='</div>';
-
-  html+='<div class="rpt-chart-box" style="height:'+(Math.max(300,provSorted.length*28+60))+'px;margin-bottom:1.5rem"><h3>Pagos por Proveedor</h3><canvas id="chart-planilla"></canvas></div>';
-
-  html+='<h2>Planilla de Pagos</h2>';
-  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th style="width:30px">#</th><th>Proveedor</th><th style="text-align:right">Transferencias</th><th style="text-align:right">Echeq</th><th style="text-align:right">Total Equiv. ARS</th><th style="text-align:right">%</th></tr></thead><tbody>';
-  provSorted.forEach(function(e,idx){
-    var prov=e[0],d=e[1];
-    var pct=totalEquiv>0?Math.round(d.equiv/totalEquiv*1000)/10:0;
-    html+='<tr><td style="text-align:center;color:var(--text-muted);font-size:.74rem">'+(idx+1)+'</td><td>'+esc(prov)+'</td><td class="num">'+fmtARS(d.transf)+'</td><td class="num">'+fmtARS(d.echeq)+'</td><td class="num">'+fmtARS(d.equiv)+'</td><td class="num">'+pct+'%</td></tr>';
+  html+='<h2 style="color:var(--acc)">Transferencias</h2>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Proveedor</th><th>Sector</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+  transfRows.forEach(function(r){
+    html+='<tr><td>'+esc(r.prov)+'</td><td style="font-size:.78rem">'+esc(r.sectors)+'</td><td class="num">'+fmtARS(r.monto)+'</td></tr>';
   });
-  html+='<tr class="rpt-total"><td></td><td>TOTAL</td><td class="num">'+fmtARS(totalTransf)+'</td><td class="num">'+fmtARS(totalEcheq)+'</td><td class="num">'+fmtARS(totalEquiv)+'</td><td class="num">100%</td></tr>';
+  html+='<tr class="rpt-total"><td>SUBTOTAL TRANSFERENCIAS</td><td>'+transfRows.length+' pagos</td><td class="num">'+fmtARS(totalTransf)+'</td></tr>';
   html+='</tbody></table></div>';
 
+  html+='<h2 style="color:var(--warn)">Echeqs</h2>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Proveedor</th><th>Sector</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+  echeqRows.forEach(function(r){
+    html+='<tr><td>'+esc(r.prov)+'</td><td style="font-size:.78rem">'+esc(r.sectors)+'</td><td class="num">'+fmtARS(r.monto)+'</td></tr>';
+  });
+  html+='<tr class="rpt-total"><td>SUBTOTAL ECHEQS</td><td>'+echeqRows.length+' pagos</td><td class="num">'+fmtARS(totalEcheq)+'</td></tr>';
+  html+='</tbody></table></div>';
+
+  html+='<div class="planilla-total"><span>TOTAL GENERAL</span><span>'+fmtARS(totalEquiv)+'</span></div>';
+
   el.innerHTML=html;
-
-  if(typeof Chart==='undefined') return;
-  var txtCol=getComputedStyle(document.documentElement).getPropertyValue('--text').trim()||'#333';
-  var mutedCol=getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim()||'#999';
-  var borderCol=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#ddd';
-
-  try{
-    var labels=provSorted.map(function(e){return e[0].length>35?e[0].substring(0,32)+'...':e[0];});
-    var transfVals=provSorted.map(function(e){return e[1].transf;});
-    var echeqVals=provSorted.map(function(e){return e[1].echeq;});
-    var c=new Chart(document.getElementById('chart-planilla'),{
-      type:'bar',
-      data:{labels:labels,datasets:[
-        {label:'Transferencias',data:transfVals,backgroundColor:'#3a7d5c',borderRadius:3,barThickness:16},
-        {label:'Echeq',data:echeqVals,backgroundColor:'#c07c1c',borderRadius:3,barThickness:16}
-      ]},
-      options:{
-        indexAxis:'y',responsive:true,maintainAspectRatio:false,
-        plugins:{
-          legend:{labels:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}},
-          tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtARS(ctx.raw);}}}
-        },
-        scales:{
-          x:{stacked:true,grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}},
-          y:{stacked:true,grid:{display:false},ticks:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}}
-        },
-        animation:{duration:600}
-      }
-    });
-    chartInstances.push(c);
-  }catch(e){}
 }
 
 function exportData(){
