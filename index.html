@@ -1019,61 +1019,53 @@ function exportData(){
   if(!sel.length){showMsg('Selecciona al menos una orden');return;}
 
   var wb=XLSX.utils.book_new();
-  var tc=state.tipoCambio;
 
-  var h1=[['REPORTE DE PAGOS SEMANAL'],['HIJOS DE SALVADOR MUÑOZ S.A.'],
-    [],['Nro OC','Proveedor','Sector','Moneda','TC','Importe Original','%','Importe a Pagar','Equiv. ARS','Forma de Pago','Plazo']];
-  var d1=sel.map(function(o){var ef=efectivo(o);return [o.oc,o.proveedor,o.sector,o.moneda,o.moneda==='USD'?(o.tipoCambio||''):1,o.total,o.porcentaje||100,ef,efectivoARS(o),o.pago,o.plazo||''];});
-  var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
-  var xTotalTransf=0,xTotalEcheq=0;
-  sel.forEach(function(o){var sp=splitTransfEcheq(o);xTotalTransf+=sp.transf;xTotalEcheq+=sp.echeq;});
-  d1.push([],['TOTAL EQUIVALENTE ARS','','','','','','','',totalEquiv,'',''],
-    [],['TOTAL TRANSFERENCIAS','','','','','','','',xTotalTransf,'',''],
-    ['TOTAL ECHEQ','','','','','','','',xTotalEcheq,'','']);
-  var ws1=XLSX.utils.aoa_to_sheet(h1.concat(d1));
-  ws1['!cols']=[{wch:18},{wch:45},{wch:22},{wch:8},{wch:10},{wch:16},{wch:6},{wch:16},{wch:18},{wch:22},{wch:12}];
-  XLSX.utils.book_append_sheet(wb,ws1,'Detalle de Pagos');
+  var provMap={};
+  sel.forEach(function(o){
+    var prov=o.proveedor||'Sin proveedor';
+    if(!provMap[prov]) provMap[prov]={transf:0,echeq:0,sectors:new Set()};
+    var m=provMap[prov];
+    var sp=splitTransfEcheq(o);
+    m.transf+=sp.transf;m.echeq+=sp.echeq;
+    m.sectors.add(o.sector);
+  });
 
-  var sectorMap={};
-  sel.forEach(function(o){if(!sectorMap[o.sector]) sectorMap[o.sector]={ars:0,usd:0,equiv:0,count:0,plazos:[]};
-    var m=sectorMap[o.sector];var ef=efectivo(o);
-    if(o.moneda==='USD') m.usd+=ef; else m.ars+=ef;
-    m.equiv+=efectivoARS(o);m.count++;if(o.plazo) m.plazos.push(o.plazo);});
-  var sRows=Object.entries(sectorMap).sort(function(a,b){return b[1].equiv-a[1].equiv;})
-    .map(function(e){var s=e[0],d=e[1];return [s,d.count,d.ars,d.usd,d.equiv,[...new Set(d.plazos)].join(', ')];});
-  var totalARS=sel.filter(function(o){return o.moneda!=='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
-  var totalUSD=sel.filter(function(o){return o.moneda==='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
-  var ws2=XLSX.utils.aoa_to_sheet([['RESUMEN DE PAGOS POR SECTOR'],['Tipo de Cambio: '+tc],[],
-    ['Sector','Cantidad OC','Total ARS','Total USD','Equiv. ARS','Plazos']].concat(sRows).concat([[],['TOTAL',sel.length,totalARS,totalUSD,totalEquiv,'']]));
-  ws2['!cols']=[{wch:28},{wch:14},{wch:18},{wch:16},{wch:18},{wch:20}];
-  XLSX.utils.book_append_sheet(wb,ws2,'Resumen por Sector');
+  var transfRows=[];var echeqRows=[];
+  var totalTransf=0,totalEcheq=0;
+  Object.entries(provMap).forEach(function(e){
+    var prov=e[0],d=e[1];
+    var sectors=[...d.sectors].join(', ');
+    if(d.transf>0){transfRows.push([prov,sectors,d.transf]);totalTransf+=d.transf;}
+    if(d.echeq>0){echeqRows.push([prov,sectors,d.echeq]);totalEcheq+=d.echeq;}
+  });
+  transfRows.sort(function(a,b){return b[2]-a[2];});
+  echeqRows.sort(function(a,b){return b[2]-a[2];});
 
-  var pagoMap={};
-  sel.forEach(function(o){if(!pagoMap[o.pago]) pagoMap[o.pago]={ars:0,usd:0,equiv:0,count:0};
-    var m=pagoMap[o.pago];var ef=efectivo(o);
-    if(o.moneda==='USD') m.usd+=ef; else m.ars+=ef;
-    m.equiv+=efectivoARS(o);m.count++;});
-  var pRows=Object.entries(pagoMap).sort(function(a,b){return b[1].equiv-a[1].equiv;})
-    .map(function(e){return [e[0],e[1].count,e[1].ars,e[1].usd,e[1].equiv];});
-  var ws3=XLSX.utils.aoa_to_sheet([['RESUMEN POR FORMA DE PAGO'],['Tipo de Cambio: '+tc],[],
-    ['Forma de Pago','Cantidad OC','Total ARS','Total USD','Equiv. ARS']].concat(pRows).concat([[],['TOTAL',sel.length,totalARS,totalUSD,totalEquiv]]));
-  ws3['!cols']=[{wch:26},{wch:14},{wch:18},{wch:16},{wch:18}];
-  XLSX.utils.book_append_sheet(wb,ws3,'Resumen Forma de Pago');
+  var data=[['PLANILLA DE PAGOS SEMANAL'],['HIJOS DE SALVADOR MUÑOZ S.A.'],[]];
+  data.push(['TRANSFERENCIAS']);
+  data.push(['Proveedor','Sector','Importe']);
+  transfRows.forEach(function(r){data.push(r);});
+  data.push(['SUBTOTAL TRANSFERENCIAS','',totalTransf]);
+  data.push([]);
+  data.push(['ECHEQS']);
+  data.push(['Proveedor','Sector','Importe']);
+  echeqRows.forEach(function(r){data.push(r);});
+  data.push(['SUBTOTAL ECHEQS','',totalEcheq]);
+  data.push([]);
+  data.push(['TOTAL GENERAL','',totalTransf+totalEcheq]);
 
-  var applyFmt=function(ws,cols,startRow,endRow){
-    cols.forEach(function(col){
-      for(var r=startRow;r<=endRow;r++){
-        var addr=XLSX.utils.encode_cell({r:r,c:col});
-        if(ws[addr]&&typeof ws[addr].v==='number') ws[addr].z='#,##0.00';
-      }
-    });
-  };
-  applyFmt(ws1,[5,6,7,8],4,4+sel.length+6);
-  applyFmt(ws2,[2,3,4],4,4+sRows.length+1);
-  applyFmt(ws3,[2,3,4],4,4+pRows.length+1);
+  var ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[{wch:45},{wch:28},{wch:18}];
 
-  XLSX.writeFile(wb,'Reporte_Pagos_Semanal.xlsx');
-  showMsg('Reporte exportado correctamente');
+  var fmtCol=2;
+  for(var r=0;r<data.length;r++){
+    var addr=XLSX.utils.encode_cell({r:r,c:fmtCol});
+    if(ws[addr]&&typeof ws[addr].v==='number') ws[addr].z='#,##0';
+  }
+
+  XLSX.utils.book_append_sheet(wb,ws,'Planilla de Pagos');
+  XLSX.writeFile(wb,'Planilla_Pagos_Semanal.xlsx');
+  showMsg('Planilla exportada correctamente');
 }
 
 function init(){
