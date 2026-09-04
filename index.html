@@ -173,33 +173,61 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 .rpt-ind.blue .ind-val{color:var(--pri)} .rpt-ind.blue .ind-bar-fill{background:var(--pri)}
 .rpt-toolbar{display:flex;justify-content:flex-end;margin-bottom:1rem;gap:.5rem}
 
+.rpt-summary{margin-bottom:1.5rem;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
+.rpt-summary-total{min-width:180px}
+.rpt-summary-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:500}
+.rpt-summary-amount{font-size:1.6rem;font-weight:700;color:var(--pri);font-variant-numeric:tabular-nums;margin:.1rem 0}
+.rpt-summary-detail{font-size:.75rem;color:var(--text-muted)}
+.rpt-summary-split{flex:1;min-width:250px;display:flex;flex-direction:column;gap:.5rem}
+.rpt-summary-item{position:relative;border-radius:8px;overflow:hidden;background:var(--bg-row-alt)}
+.rpt-summary-item-bar{position:absolute;inset:0;border-radius:8px;transition:width .6s ease-out}
+.rpt-summary-item.transf .rpt-summary-item-bar{background:rgba(58,125,92,.15)}
+.rpt-summary-item.echeq .rpt-summary-item-bar{background:rgba(192,124,28,.15)}
+.rpt-summary-item-body{position:relative;padding:.5rem .8rem;display:flex;align-items:center;gap:.8rem}
+.rpt-summary-item-label{font-size:.78rem;font-weight:600;min-width:100px}
+.rpt-summary-item.transf .rpt-summary-item-label{color:var(--acc)}
+.rpt-summary-item.echeq .rpt-summary-item-label{color:var(--warn)}
+.rpt-summary-item-val{font-size:.9rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.rpt-summary-item-meta{font-size:.72rem;color:var(--text-muted);margin-left:auto}
+.rpt-summary-plazo{font-size:.78rem;color:var(--text-muted);text-align:center;min-width:90px}
+.rpt-summary-plazo-val{display:block;font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums}
+.rpt-summary-plazo.green .rpt-summary-plazo-val{color:var(--acc)}
+.rpt-summary-plazo.amber .rpt-summary-plazo-val{color:var(--warn)}
+.rpt-summary-plazo.red .rpt-summary-plazo-val{color:var(--danger)}
+
 .rpt-print-header{display:none}
 
 @media print{
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
-  body{background:#fff !important;color:#1a1a18 !important;font-size:10pt}
-  .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay{display:none !important}
+  @page{size:A4 landscape;margin:12mm 10mm}
+  body{background:#fff !important;color:#1a1a18 !important;font-size:9pt}
+  .header,.action-bar,.kpi-row,.tabs,.toolbar,.export-bar,.upload-zone,.rpt-toolbar,#overlay,#tab-planilla{display:none !important}
   .workspace{display:block !important;height:auto !important}
   .report{overflow:visible !important;padding:0 !important}
   #tab-orders{display:none !important}
-  .rpt-print-header{display:block !important;text-align:center;margin-bottom:1.2rem;padding-bottom:.8rem;border-bottom:2px solid #1e3d59}
-  .rpt-print-header h1{font-size:14pt;color:#1e3d59;margin-bottom:.15rem}
-  .rpt-print-header p{font-size:9pt;color:#5a5954}
-  .rpt-cards{grid-template-columns:repeat(3,1fr) !important}
-  .rpt-card{border:1px solid #ccc !important;background:#f8f8f8 !important}
-  .rpt-dash{grid-template-columns:1fr 1fr !important}
-  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;page-break-inside:avoid;height:280px !important}
-  .rpt-chart-box.tall{height:360px !important}
-  .rpt-indicators{grid-template-columns:repeat(4,1fr) !important}
-  .rpt-ind{border:1px solid #ccc !important}
-  .rpt-table-wrap{page-break-inside:auto}
-  .rpt-table th{background:#e8eef3 !important;color:#1a1a18 !important}
+  .rpt-print-header{display:block !important;text-align:center;margin-bottom:.8rem;padding-bottom:.6rem;border-bottom:2px solid #1e3d59}
+  .rpt-print-header h1{font-size:13pt;color:#1e3d59;margin-bottom:.1rem}
+  .rpt-print-header p{font-size:8pt;color:#5a5954}
+  .rpt-summary{border:1px solid #ccc !important;background:#fff !important;padding:.8rem 1rem !important;margin-bottom:.8rem !important;break-inside:avoid}
+  .rpt-summary-amount{font-size:1.3rem !important;color:#1e3d59 !important}
+  .rpt-summary-item.transf .rpt-summary-item-bar{background:rgba(58,125,92,.12) !important}
+  .rpt-summary-item.echeq .rpt-summary-item-bar{background:rgba(192,124,28,.12) !important}
+  .rpt-summary-item.transf .rpt-summary-item-label{color:#2a5c43 !important}
+  .rpt-summary-item.echeq .rpt-summary-item-label{color:#8a5a10 !important}
+  .rpt-summary-plazo.green .rpt-summary-plazo-val{color:#2a5c43 !important}
+  .rpt-summary-plazo.amber .rpt-summary-plazo-val{color:#8a5a10 !important}
+  .rpt-summary-plazo.red .rpt-summary-plazo-val{color:#a93a31 !important}
+  .rpt-dash{grid-template-columns:1fr 1fr !important;gap:.6rem !important;margin-bottom:.8rem !important;break-inside:avoid}
+  .rpt-chart-box{border:1px solid #ccc !important;background:#fff !important;page-break-inside:avoid;height:220px !important;padding:.7rem !important}
+  .rpt-chart-box.tall{height:280px !important}
+  .rpt-chart-box h3{font-size:.68rem !important;margin-bottom:.3rem !important}
+  .rpt-table-wrap{page-break-inside:auto;margin-bottom:.4rem !important}
+  .rpt-table{font-size:.72rem !important}
+  .rpt-table th{background:#e8eef3 !important;color:#1a1a18 !important;padding:.3rem .4rem !important;font-size:.66rem !important}
+  .rpt-table td{padding:.25rem .4rem !important}
   .rpt-table .rpt-total td{background:#f4f4f1 !important}
-  .report h2{color:#1e3d59 !important;page-break-after:avoid}
+  .report h2{color:#1e3d59 !important;page-break-after:avoid;font-size:.85rem !important;margin:1rem 0 .4rem !important}
   canvas{max-width:100% !important}
-}
-@media print and (min-width:0){
-  .rpt-dash{break-inside:avoid}
 }
 
 .export-bar{padding:.6rem 1.5rem;background:var(--bg-card);border-top:2px solid var(--acc);display:flex;align-items:center;gap:1rem;flex-wrap:wrap;box-shadow:0 -2px 8px rgba(0,0,0,.04)}
@@ -768,6 +796,9 @@ function renderReport(){
   var pctTransf=totalEquiv>0?Math.round(totalTransf/totalEquiv*100):0;
   var pctEcheq=totalEquiv>0?Math.round(totalEcheq/totalEquiv*100):0;
   var usdCount=sel.filter(function(o){return o.moneda==='USD';}).length;
+  var cntTransf=sel.filter(function(o){return o.pago==='Transferencia';}).length;
+  var cntEcheq=sel.filter(function(o){return o.pago==='Echeq';}).length;
+  var cntMixto=sel.filter(function(o){return o.pago==='Transferencia + Echeq';}).length;
 
   var today=new Date();
   var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
@@ -776,11 +807,13 @@ function renderReport(){
 
   html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir Reporte</button></div>';
 
-  html+='<div class="rpt-indicators">';
-  html+='<div class="rpt-ind '+plazoColor+'"><div class="ind-label">Plazo Promedio</div><div class="ind-val">'+Math.round(avgPlazo)+'<small style="font-size:.6em"> d</small></div><div class="ind-bar"><div class="ind-bar-fill" style="width:'+Math.min(100,avgPlazo/60*100)+'%"></div></div><div class="ind-sub" style="color:var(--'+(plazoColor==='green'?'acc':plazoColor==='amber'?'warn':'danger')+')">Meta: &ge; 30 d &mdash; '+plazoStatus+'</div></div>';
-  html+='<div class="rpt-ind blue"><div class="ind-label">Total Equivalente</div><div class="ind-val" style="font-size:1.2rem">'+fmtARS(totalEquiv)+'</div>'+(hasUSD?'<div class="ind-sub" style="color:var(--text-muted)">'+usdCount+' OC en USD</div>':'')+'</div>';
-  html+='<div class="rpt-ind green"><div class="ind-label">Transferencias</div><div class="ind-val">'+pctTransf+'<small style="font-size:.6em">%</small></div><div class="ind-bar"><div class="ind-bar-fill" style="width:'+pctTransf+'%"></div></div><div class="ind-sub">'+fmtARS(totalTransf)+'</div></div>';
-  html+='<div class="rpt-ind amber"><div class="ind-label">Echeq</div><div class="ind-val">'+pctEcheq+'<small style="font-size:.6em">%</small></div><div class="ind-bar"><div class="ind-bar-fill" style="width:'+pctEcheq+'%"></div></div><div class="ind-sub">'+fmtARS(totalEcheq)+'</div></div>';
+  html+='<div class="rpt-summary">';
+  html+='<div class="rpt-summary-total"><div class="rpt-summary-label">Total a Pagar</div><div class="rpt-summary-amount">'+fmtARS(totalEquiv)+'</div><div class="rpt-summary-detail">'+sel.length+' ordenes'+(hasUSD?' &middot; '+usdCount+' en USD':'')+'</div></div>';
+  html+='<div class="rpt-summary-split">';
+  html+='<div class="rpt-summary-item transf"><div class="rpt-summary-item-bar" style="width:'+pctTransf+'%"></div><div class="rpt-summary-item-body"><span class="rpt-summary-item-label">Transferencias</span><span class="rpt-summary-item-val">'+fmtARS(totalTransf)+'</span><span class="rpt-summary-item-meta">'+pctTransf+'% &middot; '+(cntTransf+cntMixto)+' OC</span></div></div>';
+  html+='<div class="rpt-summary-item echeq"><div class="rpt-summary-item-bar" style="width:'+pctEcheq+'%"></div><div class="rpt-summary-item-body"><span class="rpt-summary-item-label">Echeq</span><span class="rpt-summary-item-val">'+fmtARS(totalEcheq)+'</span><span class="rpt-summary-item-meta">'+pctEcheq+'% &middot; '+(cntEcheq+cntMixto)+' OC</span></div></div>';
+  html+='</div>';
+  html+='<div class="rpt-summary-plazo '+plazoColor+'"><span class="rpt-summary-plazo-val">'+Math.round(avgPlazo)+' d</span> plazo promedio</div>';
   html+='</div>';
 
   html+='<div class="rpt-dash">';
@@ -809,12 +842,6 @@ function renderReport(){
   html+='<tr class="rpt-total"><td>TOTAL</td><td>'+sel.length+'</td><td class="num">'+fmtARS(totalTransf)+'</td><td class="num">'+fmtARS(totalEcheq)+'</td><td class="num">'+fmtARS(totalEquiv)+'</td><td></td></tr>';
   html+='</tbody></table></div>';
 
-  html+='<h2>Resumen por Forma de Pago</h2>';
-  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Forma de Pago</th><th style="text-align:right">Monto ARS</th><th style="text-align:right">%</th></tr></thead><tbody>';
-  html+='<tr><td>Transferencias</td><td class="num">'+fmtARS(totalTransf)+'</td><td class="num">'+pctTransf+'%</td></tr>';
-  html+='<tr><td>Echeq</td><td class="num">'+fmtARS(totalEcheq)+'</td><td class="num">'+pctEcheq+'%</td></tr>';
-  html+='<tr class="rpt-total"><td>TOTAL</td><td class="num">'+fmtARS(totalEquiv)+'</td><td class="num">100%</td></tr>';
-  html+='</tbody></table></div>';
   var pagoSorted=[['Transferencia',{equiv:totalTransf}],['Echeq',{equiv:totalEcheq}]];
 
   html+='<h2>Detalle de Ordenes Seleccionadas</h2>';
