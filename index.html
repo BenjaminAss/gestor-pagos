@@ -622,7 +622,6 @@ async function addFromFile(file){
       if(existingOCs.has(order.oc)){skipped++;return;}
       var idx=state.orders.length;
       state.orders.push(order);
-      state.selected.add(idx);
       state.newOCs.add(idx);
       existingOCs.add(order.oc);
       added++;
