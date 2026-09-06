@@ -1220,6 +1220,105 @@ function renderFlujo(){
   var html='<div class="rpt-print-header"><h1>Flujo de Caja Estimado</h1><p>Hijos de Salvador Muñoz S.A. &mdash; '+fechaStr+'</p></div>';
   html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir</button></div>';
 
+  var dayOfWeek=today.getDay();
+  var mondayOff=dayOfWeek===0?-6:1-dayOfWeek;
+  var monday=new Date(today);monday.setHours(0,0,0,0);monday.setDate(today.getDate()+mondayOff);
+  var DIAS=['Lunes','Martes','Miércoles','Jueves','Viernes'];
+  var diasData=[];
+  for(var di=0;di<5;di++){
+    var d=new Date(monday);d.setDate(monday.getDate()+di);
+    diasData.push({fecha:d,iso:d.toISOString().split('T')[0],label:DIAS[di],items:[],total:0});
+  }
+  var sinFechaSem=[];
+
+  sel.forEach(function(o){
+    var sp=splitTransfEcheq(o);
+    if(sp.transf>0){
+      var fp=o.fechaPago||'';
+      var matched=false;
+      diasData.forEach(function(dd){
+        if(fp===dd.iso){
+          dd.items.push({desc:o.proveedor,monto:sp.transf,sector:o.sector,tipo:'transf'});
+          dd.total+=sp.transf;
+          matched=true;
+        }
+      });
+      if(!matched&&!fp){
+        sinFechaSem.push({desc:o.proveedor,monto:sp.transf,sector:o.sector,tipo:'transf'});
+      }
+    }
+  });
+
+  state.impuestos.forEach(function(imp){
+    var fp=imp.fecha||'';
+    diasData.forEach(function(dd){
+      if(fp===dd.iso){
+        dd.items.push({desc:imp.concepto,monto:imp.importe,sector:'Impuestos',tipo:'imp'});
+        dd.total+=imp.importe;
+      }
+    });
+  });
+
+  var semTotal=diasData.reduce(function(s,dd){return s+dd.total;},0);
+  var sinFechaTotal=sinFechaSem.reduce(function(s,it){return s+it.monto;},0);
+  var semGrandTotal=semTotal+sinFechaTotal;
+  var maxDia=Math.max.apply(null,diasData.map(function(dd){return dd.total;}))||1;
+
+  var semanaLabel=new Date(monday).toLocaleDateString('es-AR',{day:'2-digit',month:'short'})+' al '+new Date(diasData[4].fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
+
+  html+='<h2 style="border-bottom-color:var(--acc)">Flujo Semanal &mdash; '+semanaLabel+'</h2>';
+
+  html+='<div class="flujo-resumen">';
+  html+='<div class="flujo-resumen-card"><div class="label">Necesidad de la semana</div><div class="val" style="color:var(--acc)">'+fmtARS(semGrandTotal)+'</div></div>';
+  html+='<div class="flujo-resumen-card"><div class="label">Con fecha asignada</div><div class="val" style="color:var(--pri)">'+fmtARS(semTotal)+'</div></div>';
+  if(sinFechaTotal>0) html+='<div class="flujo-resumen-card"><div class="label">Sin fecha (a distribuir)</div><div class="val" style="color:var(--warn)">'+fmtARS(sinFechaTotal)+'</div></div>';
+  var diasConPago=diasData.filter(function(dd){return dd.total>0;}).length;
+  html+='<div class="flujo-resumen-card"><div class="label">Dias con pagos</div><div class="val" style="color:var(--text)">'+diasConPago+' / 5</div></div>';
+  html+='</div>';
+
+  html+='<div class="rpt-chart-box" style="height:250px;margin-bottom:1.2rem"><h3>Egresos por dia de la semana</h3><canvas id="chart-flujo-sem"></canvas></div>';
+
+  diasData.forEach(function(dd,idx){
+    var esHoy=dd.iso===today.toISOString().split('T')[0];
+    var borderStyle=esHoy?'border-left:3px solid var(--acc);':'';
+    html+='<div class="flujo-mes" style="'+borderStyle+'">';
+    html+='<div class="flujo-mes-header">';
+    html+='<h3>'+dd.label+' '+new Date(dd.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'short'})+(esHoy?' <span style="font-size:.7rem;color:var(--acc);font-weight:400;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem">hoy</span>':'')+'</h3>';
+    html+='<span class="flujo-mes-total">'+fmtARS(dd.total)+'</span></div>';
+    if(dd.items.length){
+      var barPct=maxDia>0?dd.total/maxDia*100:0;
+      html+='<div class="flujo-bar"><div class="flujo-bar-seg flujo-bar-transf" style="width:'+barPct+'%"></div></div>';
+      html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th>Tipo</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+      dd.items.sort(function(a,b){return b.monto-a.monto;});
+      dd.items.forEach(function(it){
+        var tipoLabel=it.tipo==='transf'?'Transferencia':'Impuesto';
+        var tipoColor=it.tipo==='transf'?'var(--acc)':'var(--pri)';
+        html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td style="color:'+tipoColor+';font-weight:500;font-size:.78rem">'+tipoLabel+'</td><td class="num">'+fmtARS(it.monto)+'</td></tr>';
+      });
+      html+='</tbody></table></div></div>';
+    } else {
+      html+='<div style="padding:.5rem 1rem;font-size:.78rem;color:var(--text-muted)">Sin pagos programados</div>';
+    }
+    html+='</div>';
+  });
+
+  if(sinFechaSem.length){
+    html+='<div class="flujo-mes" style="border-left:3px solid var(--warn)">';
+    html+='<div class="flujo-mes-header"><h3 style="color:var(--warn)">Sin fecha asignada</h3><span class="flujo-mes-total">'+fmtARS(sinFechaTotal)+'</span></div>';
+    html+='<div style="padding:0 1rem .4rem;font-size:.72rem;color:var(--text-muted)">Transferencias sin fecha de pago &mdash; asignar dia en la columna F. Pago de Ordenes</div>';
+    html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+    sinFechaSem.sort(function(a,b){return b.monto-a.monto;});
+    sinFechaSem.forEach(function(it){
+      html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td class="num">'+fmtARS(it.monto)+'</td></tr>';
+    });
+    html+='</tbody></table></div></div>';
+    html+='</div>';
+  }
+
+  html+='<div style="background:var(--acc);color:#fff;border-radius:8px;padding:.7rem 1rem;margin-bottom:1.5rem;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-variant-numeric:tabular-nums"><span>TOTAL SEMANAL TRANSFERENCIAS</span><span>'+fmtARS(semGrandTotal)+'</span></div>';
+
+  html+='<h2>Flujo Mensual</h2>';
+
   html+='<div class="flujo-resumen">';
   html+='<div class="flujo-resumen-card"><div class="label">Total Estimado</div><div class="val" style="color:var(--pri)">'+fmtARS(grandTotal)+'</div></div>';
   var gtTransf=0,gtEcheq=0,gtImp=0;
@@ -1271,6 +1370,25 @@ function renderFlujo(){
     var txtCol=isDark?'#eae9e5':'#1a1a18';
     var mutedCol=isDark?'#7a786f':'#8a887f';
     var borderCol=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)';
+
+    var semLabels=diasData.map(function(dd){return dd.label;});
+    var semVals=diasData.map(function(dd){return dd.total;});
+    var todayIso=today.toISOString().split('T')[0];
+    var semColors=diasData.map(function(dd){return dd.iso===todayIso?'rgba(58,125,92,.9)':'rgba(58,125,92,.5)';});
+    var cSem=new Chart(document.getElementById('chart-flujo-sem'),{
+      type:'bar',
+      data:{labels:semLabels,datasets:[{label:'Transferencias',data:semVals,backgroundColor:semColors,borderRadius:6,barThickness:36}]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmtARS(ctx.raw);}}}},
+        scales:{
+          x:{grid:{display:false},ticks:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:12,weight:'500'}}},
+          y:{grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}}
+        },
+        animation:{duration:600}
+      }
+    });
+    chartInstances.push(cSem);
 
     var labels=sortedMeses.map(mesLabel);
     var dTransf=sortedMeses.map(function(k){return meses[k].transf;});
