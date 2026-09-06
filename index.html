@@ -735,7 +735,7 @@ function render(){
         +(!PAGOS.includes(o.pago)?'<option selected>'+esc(o.pago)+'</option>':'')
       +'</select></td>'
       +'<td><input type="text" class="plazo-input" placeholder="30-60-90" value="'+esc(o.plazo||'')+'" onchange="updField('+o.i+',\'plazo\',this.value)"></td>'
-      +'<td><input type="date" style="width:110px;font-size:.72rem;font-family:var(--mono)" value="'+(o.fechaPago||'')+'" onchange="updField('+o.i+',\'fechaPago\',this.value)"></td>'
+      +'<td>'+(o.pago!=='Echeq'?'<input type="date" style="width:110px;font-size:.72rem;font-family:var(--mono)" value="'+(o.fechaPago||'')+'" onchange="updField('+o.i+',\'fechaPago\',this.value)">':'<span style="font-size:.72rem;color:var(--text-muted)">auto</span>')+'</td>'
       +'<td class="ingreso">'+fmtShortDate(o.fechaIngreso)+'</td>'
       +'</tr>';
   });
@@ -1114,13 +1114,33 @@ function renderFlujo(){
   var meses={};
 
   sel.forEach(function(o){
-    var fecha=estimarFechaPago(o);
-    var mk=mesKey(fecha);
-    if(!meses[mk]) meses[mk]={transf:0,echeq:0,imp:0,items:[]};
+    var ars=efectivoARS(o);
     var sp=splitTransfEcheq(o);
-    meses[mk].transf+=sp.transf;
-    meses[mk].echeq+=sp.echeq;
-    meses[mk].items.push({tipo:o.pago==='Echeq'?'echeq':'transf',desc:o.proveedor,monto:efectivoARS(o),fecha:fecha,sector:o.sector});
+
+    if(sp.transf>0){
+      var fechaT=o.fechaPago||new Date().toISOString().split('T')[0];
+      var mkT=mesKey(fechaT);
+      if(!meses[mkT]) meses[mkT]={transf:0,echeq:0,imp:0,items:[]};
+      meses[mkT].transf+=sp.transf;
+      meses[mkT].items.push({tipo:'transf',desc:o.proveedor,monto:sp.transf,fecha:fechaT,sector:o.sector});
+    }
+
+    if(sp.echeq>0){
+      var plazo=String(o.plazo||'');
+      var parts=plazo.split(/[-\/]/).map(function(s){return s.trim();}).filter(Boolean).map(Number).filter(function(n){return !isNaN(n)&&n>0;});
+      if(!parts.length) parts=[30];
+      var montoPorParte=sp.echeq/parts.length;
+      var hoy=new Date();
+      parts.forEach(function(dias){
+        var fechaE=new Date(hoy);
+        fechaE.setDate(fechaE.getDate()+dias);
+        var fechaStr=fechaE.toISOString().split('T')[0];
+        var mkE=mesKey(fechaStr);
+        if(!meses[mkE]) meses[mkE]={transf:0,echeq:0,imp:0,items:[]};
+        meses[mkE].echeq+=montoPorParte;
+        meses[mkE].items.push({tipo:'echeq',desc:o.proveedor+' ('+dias+'d)',monto:montoPorParte,fecha:fechaStr,sector:o.sector});
+      });
+    }
   });
 
   state.impuestos.forEach(function(imp){
