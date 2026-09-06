@@ -210,6 +210,24 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 .btn-del-imp{background:none;border:none;color:var(--danger);cursor:pointer;font-size:.9rem;padding:.2rem .4rem;border-radius:4px;transition:background .2s}
 .btn-del-imp:hover{background:var(--danger-light)}
 
+.flujo-mes{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden}
+.flujo-mes-header{display:flex;justify-content:space-between;align-items:center;padding:.7rem 1rem;background:var(--bg-row-alt);border-bottom:1px solid var(--border);cursor:pointer}
+.flujo-mes-header h3{font-size:.85rem;font-weight:600;color:var(--pri);margin:0}
+.flujo-mes-header .flujo-mes-total{font-size:.95rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.flujo-mes-body{padding:0}
+.flujo-bar{height:8px;border-radius:4px;background:var(--border);margin:.6rem 1rem;overflow:hidden;display:flex}
+.flujo-bar-seg{height:100%;transition:width .4s ease-out}
+.flujo-bar-transf{background:var(--acc)}
+.flujo-bar-echeq{background:var(--warn)}
+.flujo-bar-imp{background:var(--pri)}
+.flujo-legend{display:flex;gap:1rem;padding:0 1rem .6rem;font-size:.72rem;color:var(--text-muted)}
+.flujo-legend span{display:flex;align-items:center;gap:.3rem}
+.flujo-legend .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.flujo-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem;margin-bottom:1.2rem}
+.flujo-resumen-card{padding:.8rem 1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;text-align:center}
+.flujo-resumen-card .val{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.2rem 0}
+.flujo-resumen-card .label{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);font-weight:500}
+
 .rpt-print-header{display:none}
 
 @media print{
@@ -220,8 +238,8 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .workspace{display:block !important;height:auto !important}
   .report{overflow:visible !important;padding:0 !important;height:auto !important}
   #tab-orders{display:none !important}
-  #tab-report,#tab-planilla,#tab-impuestos{display:none !important}
-  #tab-report.print-active,#tab-planilla.print-active,#tab-impuestos.print-active{display:block !important;overflow:visible !important;padding:0 !important}
+  #tab-report,#tab-planilla,#tab-impuestos,#tab-flujo{display:none !important}
+  #tab-report.print-active,#tab-planilla.print-active,#tab-impuestos.print-active,#tab-flujo.print-active{display:block !important;overflow:visible !important;padding:0 !important}
   .rpt-print-header{display:block !important;text-align:center;margin-bottom:.6rem;padding-bottom:.5rem;border-bottom:2px solid #1e3d59}
   .rpt-print-header h1{font-size:12pt;color:#1e3d59;margin-bottom:.1rem}
   .rpt-print-header p{font-size:8pt;color:#5a5954}
@@ -249,6 +267,11 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .planilla-total,.imp-total-bar{background:#1e3d59 !important;color:#fff !important;break-inside:avoid;padding:.5rem .8rem !important;font-size:.9rem !important;margin-top:.5rem !important}
   .imp-form{display:none !important}
   .btn-del-imp{display:none !important}
+  .flujo-mes{border:1px solid #ccc !important;break-inside:avoid;margin-bottom:.5rem !important}
+  .flujo-mes-header{background:#e8eef3 !important}
+  .flujo-resumen{gap:.4rem !important;margin-bottom:.6rem !important}
+  .flujo-resumen-card{border:1px solid #ccc !important;padding:.4rem .6rem !important}
+  .flujo-resumen-card .val{font-size:1rem !important}
   canvas{max-width:100% !important}
 }
 
@@ -316,6 +339,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
     <button class="tab" data-tab="report">Reporte</button>
     <button class="tab" data-tab="planilla">Planilla de Pagos</button>
     <button class="tab" data-tab="impuestos">Impuestos</button>
+    <button class="tab" data-tab="flujo">Flujo de Caja</button>
   </div>
   <div class="toolbar" id="toolbar">
     <input type="search" id="search" placeholder="Buscar proveedor u OC...">
@@ -332,7 +356,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
         <th><input type="checkbox" id="chk-all" title="Seleccionar/deseleccionar todos"></th>
         <th>OC</th><th>Fecha</th><th>Proveedor</th>
         <th>Sector</th><th>Mon</th><th>TC</th><th style="text-align:right">Importe</th><th>%</th>
-        <th>Forma de pago</th><th>Plazo</th><th>Ingreso</th>
+        <th>Forma de pago</th><th>Plazo</th><th>F. Pago</th><th>Ingreso</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -341,6 +365,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   <div class="report" id="tab-report"></div>
   <div class="report" id="tab-planilla"></div>
   <div class="report" id="tab-impuestos"></div>
+  <div class="report" id="tab-flujo"></div>
   <div class="export-bar">
     <span class="stat"><b id="exp-count">0</b> seleccionadas</span>
     <span class="stat">Total: <b id="exp-total">$0</b></span>
@@ -710,6 +735,7 @@ function render(){
         +(!PAGOS.includes(o.pago)?'<option selected>'+esc(o.pago)+'</option>':'')
       +'</select></td>'
       +'<td><input type="text" class="plazo-input" placeholder="30-60-90" value="'+esc(o.plazo||'')+'" onchange="updField('+o.i+',\'plazo\',this.value)"></td>'
+      +'<td><input type="date" style="width:110px;font-size:.72rem;font-family:var(--mono)" value="'+(o.fechaPago||'')+'" onchange="updField('+o.i+',\'fechaPago\',this.value)"></td>'
       +'<td class="ingreso">'+fmtShortDate(o.fechaIngreso)+'</td>'
       +'</tr>';
   });
@@ -788,12 +814,15 @@ function switchTab(tab){
   document.getElementById('tab-report').style.display=tab==='report'?'block':'none';
   document.getElementById('tab-planilla').style.display=tab==='planilla'?'block':'none';
   document.getElementById('tab-impuestos').style.display=tab==='impuestos'?'block':'none';
+  document.getElementById('tab-flujo').style.display=tab==='flujo'?'block':'none';
   document.getElementById('tab-report').classList.toggle('print-active',tab==='report');
   document.getElementById('tab-planilla').classList.toggle('print-active',tab==='planilla');
   document.getElementById('tab-impuestos').classList.toggle('print-active',tab==='impuestos');
+  document.getElementById('tab-flujo').classList.toggle('print-active',tab==='flujo');
   if(tab==='report') renderReport();
   if(tab==='planilla') renderPlanilla();
   if(tab==='impuestos') renderImpuestos();
+  if(tab==='flujo') renderFlujo();
 }
 
 var chartInstances=[];
@@ -1045,6 +1074,154 @@ function renderPlanilla(){
   html+='<div class="planilla-total"><span>TOTAL GENERAL</span><span>'+fmtARS(totalEquiv+impTotal)+'</span></div>';
 
   el.innerHTML=html;
+}
+
+function estimarFechaPago(o){
+  if(o.fechaPago) return o.fechaPago;
+  var plazo=parsePlazoAvg(o.plazo);
+  if(plazo!==null&&plazo>0){
+    var base=o.fecha?new Date(o.fecha):new Date();
+    if(isNaN(base.getTime())) base=new Date();
+    base.setDate(base.getDate()+Math.round(plazo));
+    return base.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
+function mesKey(dateStr){
+  if(!dateStr) return 'sin-fecha';
+  var parts=dateStr.split('-');
+  return parts[0]+'-'+parts[1];
+}
+
+function mesLabel(key){
+  if(key==='sin-fecha') return 'Sin fecha';
+  var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var parts=key.split('-');
+  return meses[parseInt(parts[1])-1]+' '+parts[0];
+}
+
+function renderFlujo(){
+  destroyCharts();
+  var el=document.getElementById('tab-flujo');
+  var sel=[...state.selected].map(function(i){return state.orders[i];}).filter(Boolean);
+
+  if(!sel.length&&!state.impuestos.length){
+    el.innerHTML='<div class="rpt-empty">Selecciona ordenes o carga impuestos para ver el flujo de caja</div>';
+    return;
+  }
+
+  var meses={};
+
+  sel.forEach(function(o){
+    var fecha=estimarFechaPago(o);
+    var mk=mesKey(fecha);
+    if(!meses[mk]) meses[mk]={transf:0,echeq:0,imp:0,items:[]};
+    var sp=splitTransfEcheq(o);
+    meses[mk].transf+=sp.transf;
+    meses[mk].echeq+=sp.echeq;
+    meses[mk].items.push({tipo:o.pago==='Echeq'?'echeq':'transf',desc:o.proveedor,monto:efectivoARS(o),fecha:fecha,sector:o.sector});
+  });
+
+  state.impuestos.forEach(function(imp){
+    var mk=mesKey(imp.fecha||'');
+    if(!meses[mk]) meses[mk]={transf:0,echeq:0,imp:0,items:[]};
+    meses[mk].imp+=imp.importe;
+    meses[mk].items.push({tipo:'imp',desc:imp.concepto,monto:imp.importe,fecha:imp.fecha||'',sector:'Impuestos'});
+  });
+
+  var sortedMeses=Object.keys(meses).sort();
+  var grandTotal=0;
+  sortedMeses.forEach(function(k){var m=meses[k];grandTotal+=m.transf+m.echeq+m.imp;});
+
+  var today=new Date();
+  var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+
+  var html='<div class="rpt-print-header"><h1>Flujo de Caja Estimado</h1><p>Hijos de Salvador Muñoz S.A. &mdash; '+fechaStr+'</p></div>';
+  html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir</button></div>';
+
+  html+='<div class="flujo-resumen">';
+  html+='<div class="flujo-resumen-card"><div class="label">Total Estimado</div><div class="val" style="color:var(--pri)">'+fmtARS(grandTotal)+'</div></div>';
+  var gtTransf=0,gtEcheq=0,gtImp=0;
+  sortedMeses.forEach(function(k){var m=meses[k];gtTransf+=m.transf;gtEcheq+=m.echeq;gtImp+=m.imp;});
+  html+='<div class="flujo-resumen-card"><div class="label">Transferencias</div><div class="val" style="color:var(--acc)">'+fmtARS(gtTransf+gtImp)+'</div></div>';
+  html+='<div class="flujo-resumen-card"><div class="label">Echeqs</div><div class="val" style="color:var(--warn)">'+fmtARS(gtEcheq)+'</div></div>';
+  html+='<div class="flujo-resumen-card"><div class="label">Meses</div><div class="val" style="color:var(--text)">'+sortedMeses.length+'</div></div>';
+  html+='</div>';
+
+  html+='<div class="rpt-chart-box tall" style="margin-bottom:1.2rem"><h3>Estimacion Mensual de Egresos</h3><canvas id="chart-flujo"></canvas></div>';
+
+  sortedMeses.forEach(function(mk){
+    var m=meses[mk];
+    var mesTotal=m.transf+m.echeq+m.imp;
+    var pTransf=grandTotal>0?m.transf/grandTotal*100:0;
+    var pEcheq=grandTotal>0?m.echeq/grandTotal*100:0;
+    var pImp=grandTotal>0?m.imp/grandTotal*100:0;
+
+    html+='<div class="flujo-mes">';
+    html+='<div class="flujo-mes-header"><h3>'+mesLabel(mk)+'</h3><span class="flujo-mes-total">'+fmtARS(mesTotal)+'</span></div>';
+    html+='<div class="flujo-bar"><div class="flujo-bar-seg flujo-bar-transf" style="width:'+pTransf+'%"></div><div class="flujo-bar-seg flujo-bar-echeq" style="width:'+pEcheq+'%"></div><div class="flujo-bar-seg flujo-bar-imp" style="width:'+pImp+'%"></div></div>';
+    html+='<div class="flujo-legend">';
+    if(m.transf>0) html+='<span><span class="dot" style="background:var(--acc)"></span>Transf '+fmtARS(m.transf)+'</span>';
+    if(m.echeq>0) html+='<span><span class="dot" style="background:var(--warn)"></span>Echeq '+fmtARS(m.echeq)+'</span>';
+    if(m.imp>0) html+='<span><span class="dot" style="background:var(--pri)"></span>Impuestos '+fmtARS(m.imp)+'</span>';
+    html+='</div>';
+
+    html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th>Tipo</th><th>Fecha Est.</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+    m.items.sort(function(a,b){return (a.fecha||'').localeCompare(b.fecha||'')||b.monto-a.monto;});
+    m.items.forEach(function(it){
+      var tipoLabel=it.tipo==='transf'?'Transferencia':it.tipo==='echeq'?'Echeq':'Impuesto';
+      var tipoColor=it.tipo==='transf'?'var(--acc)':it.tipo==='echeq'?'var(--warn)':'var(--pri)';
+      var fechaDisplay=it.fecha?new Date(it.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'—';
+      html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td style="color:'+tipoColor+';font-weight:500;font-size:.78rem">'+tipoLabel+'</td><td style="font-size:.78rem">'+fechaDisplay+'</td><td class="num">'+fmtARS(it.monto)+'</td></tr>';
+    });
+    html+='</tbody></table></div></div>';
+    html+='</div>';
+  });
+
+  html+='<div class="planilla-total"><span>TOTAL FLUJO ESTIMADO</span><span>'+fmtARS(grandTotal)+'</span></div>';
+
+  el.innerHTML=html;
+
+  try{
+    var isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    var root=document.documentElement;
+    if(root.dataset.theme==='dark') isDark=true;
+    if(root.dataset.theme==='light') isDark=false;
+    var txtCol=isDark?'#eae9e5':'#1a1a18';
+    var mutedCol=isDark?'#7a786f':'#8a887f';
+    var borderCol=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)';
+
+    var labels=sortedMeses.map(mesLabel);
+    var dTransf=sortedMeses.map(function(k){return meses[k].transf;});
+    var dEcheq=sortedMeses.map(function(k){return meses[k].echeq;});
+    var dImp=sortedMeses.map(function(k){return meses[k].imp;});
+
+    var c=new Chart(document.getElementById('chart-flujo'),{
+      type:'bar',
+      data:{
+        labels:labels,
+        datasets:[
+          {label:'Transferencias',data:dTransf,backgroundColor:'rgba(58,125,92,.7)',borderRadius:4,stack:'s'},
+          {label:'Echeq',data:dEcheq,backgroundColor:'rgba(192,124,28,.7)',borderRadius:4,stack:'s'},
+          {label:'Impuestos',data:dImp,backgroundColor:'rgba(30,61,89,.7)',borderRadius:4,stack:'s'}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}},
+          tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtARS(ctx.raw);}}}
+        },
+        scales:{
+          x:{stacked:true,grid:{display:false},ticks:{color:txtCol,font:{size:11}}},
+          y:{stacked:true,grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}}
+        },
+        animation:{duration:600}
+      }
+    });
+    chartInstances.push(c);
+  }catch(e){}
 }
 
 function addImpuesto(){
