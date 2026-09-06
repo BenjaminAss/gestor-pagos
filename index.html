@@ -197,6 +197,19 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 
 .planilla-total{display:flex;justify-content:space-between;align-items:center;padding:.8rem 1.2rem;margin-top:1rem;background:var(--pri);color:#fff;border-radius:8px;font-size:1.1rem;font-weight:700;font-variant-numeric:tabular-nums}
 
+.imp-form{display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;padding:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem}
+.imp-form .field{display:flex;flex-direction:column;gap:.2rem}
+.imp-form .field label{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:500}
+.imp-form .field input{padding:.4rem .6rem;border:1px solid var(--border);border-radius:6px;font-size:.82rem;background:var(--bg);color:var(--text);font-family:var(--font);transition:border-color .2s}
+.imp-form .field input:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 2px rgba(58,125,92,.1)}
+.imp-form .field input[type=number]{font-family:var(--mono);text-align:right;width:140px}
+.imp-form .field input[type=text]{width:220px}
+.imp-form .field input[type=date]{width:130px;font-family:var(--mono)}
+.imp-table-wrap{margin-bottom:1rem}
+.imp-total-bar{display:flex;justify-content:space-between;align-items:center;padding:.7rem 1rem;background:var(--pri);color:#fff;border-radius:8px;font-size:1rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:.5rem}
+.btn-del-imp{background:none;border:none;color:var(--danger);cursor:pointer;font-size:.9rem;padding:.2rem .4rem;border-radius:4px;transition:background .2s}
+.btn-del-imp:hover{background:var(--danger-light)}
+
 .rpt-print-header{display:none}
 
 @media print{
@@ -207,8 +220,8 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .workspace{display:block !important;height:auto !important}
   .report{overflow:visible !important;padding:0 !important;height:auto !important}
   #tab-orders{display:none !important}
-  #tab-report,#tab-planilla{display:none !important}
-  #tab-report.print-active,#tab-planilla.print-active{display:block !important;overflow:visible !important;padding:0 !important}
+  #tab-report,#tab-planilla,#tab-impuestos{display:none !important}
+  #tab-report.print-active,#tab-planilla.print-active,#tab-impuestos.print-active{display:block !important;overflow:visible !important;padding:0 !important}
   .rpt-print-header{display:block !important;text-align:center;margin-bottom:.6rem;padding-bottom:.5rem;border-bottom:2px solid #1e3d59}
   .rpt-print-header h1{font-size:12pt;color:#1e3d59;margin-bottom:.1rem}
   .rpt-print-header p{font-size:8pt;color:#5a5954}
@@ -233,7 +246,9 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .rpt-table .rpt-total td{background:#f4f4f1 !important}
   .rpt-table tr{break-inside:avoid}
   .report h2{color:#1e3d59 !important;break-after:avoid;font-size:.8rem !important;margin:.7rem 0 .3rem !important}
-  .planilla-total{background:#1e3d59 !important;color:#fff !important;break-inside:avoid;padding:.5rem .8rem !important;font-size:.9rem !important;margin-top:.5rem !important}
+  .planilla-total,.imp-total-bar{background:#1e3d59 !important;color:#fff !important;break-inside:avoid;padding:.5rem .8rem !important;font-size:.9rem !important;margin-top:.5rem !important}
+  .imp-form{display:none !important}
+  .btn-del-imp{display:none !important}
   canvas{max-width:100% !important}
 }
 
@@ -300,6 +315,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
     <button class="tab active" data-tab="orders">Ordenes</button>
     <button class="tab" data-tab="report">Reporte</button>
     <button class="tab" data-tab="planilla">Planilla de Pagos</button>
+    <button class="tab" data-tab="impuestos">Impuestos</button>
   </div>
   <div class="toolbar" id="toolbar">
     <input type="search" id="search" placeholder="Buscar proveedor u OC...">
@@ -324,6 +340,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   </div>
   <div class="report" id="tab-report"></div>
   <div class="report" id="tab-planilla"></div>
+  <div class="report" id="tab-impuestos"></div>
   <div class="export-bar">
     <span class="stat"><b id="exp-count">0</b> seleccionadas</span>
     <span class="stat">Total: <b id="exp-total">$0</b></span>
@@ -341,7 +358,7 @@ var PAGOS=['Transferencia','Echeq','Transferencia + Echeq'];
 var SKEY='gestor-pagos-v3';
 var activeTab='orders';
 
-var state={orders:[],selected:new Set(),sectors:[],newOCs:new Set(),paidCount:0,lastSaved:null,unsaved:false,tipoCambio:1200};
+var state={orders:[],selected:new Set(),sectors:[],newOCs:new Set(),paidCount:0,lastSaved:null,unsaved:false,tipoCambio:1200,impuestos:[]};
 
 function extractSector(d){
   if(!d) return 'Sin Especificar';
@@ -468,6 +485,7 @@ function loadBacklog(){
     state.paidCount=data.paidCount||0;
     state.lastSaved=data.lastSaved||null;
     state.tipoCambio=data.tipoCambio||1200;
+    state.impuestos=data.impuestos||[];
     state.newOCs=new Set();
     state.unsaved=false;
     document.getElementById('tc-input').value=state.tipoCambio;
@@ -482,6 +500,7 @@ function saveBacklog(){
       orders:state.orders.map(function(o,i){return Object.assign({},o,{selected:state.selected.has(i)});}),
       paidCount:state.paidCount,
       tipoCambio:state.tipoCambio,
+      impuestos:state.impuestos,
       lastSaved:new Date().toISOString()
     };
     localStorage.setItem(SKEY,JSON.stringify(data));
@@ -708,15 +727,16 @@ function updateStats(){
   var usdCount=sel.filter(function(o){return o.moneda==='USD';}).length;
   var usdTotal=sel.filter(function(o){return o.moneda==='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
 
+  var impTotal=state.impuestos.reduce(function(s,imp){return s+imp.importe;},0);
   document.getElementById('kpi-total-backlog').textContent=state.orders.length;
   document.getElementById('kpi-sel').textContent=sel.length;
-  document.getElementById('kpi-total').textContent=fmtARS(totalEquiv);
+  document.getElementById('kpi-total').textContent=fmtARS(totalEquiv+impTotal);
   document.getElementById('kpi-usd-info').textContent=usdCount?usdCount+' en USD ('+fmtUSD(usdTotal)+')':'';
-  document.getElementById('kpi-transf').textContent=fmtARS(totalTransf);
+  document.getElementById('kpi-transf').textContent=fmtARS(totalTransf+impTotal);
   document.getElementById('kpi-echeq').textContent=fmtARS(totalEcheq);
   document.getElementById('exp-count').textContent=sel.length;
-  document.getElementById('exp-total').textContent=fmtARS(totalEquiv);
-  document.getElementById('exp-transf').textContent=fmtARS(totalTransf);
+  document.getElementById('exp-total').textContent=fmtARS(totalEquiv+impTotal);
+  document.getElementById('exp-transf').textContent=fmtARS(totalTransf+impTotal);
   document.getElementById('btn-export').disabled=!sel.length;
   document.getElementById('btn-mark-paid').disabled=!sel.length;
   document.getElementById('paid-badge').textContent=sel.length;
@@ -767,10 +787,13 @@ function switchTab(tab){
   document.getElementById('toolbar').style.display=tab==='orders'?'':'none';
   document.getElementById('tab-report').style.display=tab==='report'?'block':'none';
   document.getElementById('tab-planilla').style.display=tab==='planilla'?'block':'none';
+  document.getElementById('tab-impuestos').style.display=tab==='impuestos'?'block':'none';
   document.getElementById('tab-report').classList.toggle('print-active',tab==='report');
   document.getElementById('tab-planilla').classList.toggle('print-active',tab==='planilla');
+  document.getElementById('tab-impuestos').classList.toggle('print-active',tab==='impuestos');
   if(tab==='report') renderReport();
   if(tab==='planilla') renderPlanilla();
+  if(tab==='impuestos') renderImpuestos();
 }
 
 var chartInstances=[];
@@ -794,6 +817,8 @@ function renderReport(){
   var totalEquiv=sel.reduce(function(s,o){return s+efectivoARS(o);},0);
   var totalTransf=0,totalEcheq=0;
   sel.forEach(function(o){var sp=splitTransfEcheq(o);totalTransf+=sp.transf;totalEcheq+=sp.echeq;});
+  var impTotal=state.impuestos.reduce(function(s,imp){return s+imp.importe;},0);
+  totalTransf+=impTotal;totalEquiv+=impTotal;
   var hasUSD=totalUSD>0;
 
   var wPlazo=0,wWeight=0;
@@ -998,7 +1023,15 @@ function renderPlanilla(){
   transfRows.forEach(function(r){
     html+='<tr><td>'+esc(r.prov)+'</td><td style="font-size:.78rem">'+esc(r.sectors)+'</td><td class="num">'+fmtARS(r.monto)+'</td></tr>';
   });
-  html+='<tr class="rpt-total"><td>SUBTOTAL TRANSFERENCIAS</td><td>'+transfRows.length+' pagos</td><td class="num">'+fmtARS(totalTransf)+'</td></tr>';
+  var impTotal=state.impuestos.reduce(function(s,imp){return s+imp.importe;},0);
+  if(state.impuestos.length){
+    html+='<tr><td colspan="3" style="padding:.6rem .6rem .2rem;font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px dashed var(--border)">Impuestos</td></tr>';
+    state.impuestos.forEach(function(imp){
+      var fechaDisplay=imp.fecha?new Date(imp.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'';
+      html+='<tr><td>'+esc(imp.concepto)+'</td><td style="font-size:.78rem">'+fechaDisplay+'</td><td class="num">'+fmtARS(imp.importe)+'</td></tr>';
+    });
+  }
+  html+='<tr class="rpt-total"><td>SUBTOTAL TRANSFERENCIAS</td><td>'+(transfRows.length+state.impuestos.length)+' pagos</td><td class="num">'+fmtARS(totalTransf+impTotal)+'</td></tr>';
   html+='</tbody></table></div>';
 
   html+='<h2 style="color:var(--warn)">Echeqs</h2>';
@@ -1009,7 +1042,65 @@ function renderPlanilla(){
   html+='<tr class="rpt-total"><td>SUBTOTAL ECHEQS</td><td>'+echeqRows.length+' pagos</td><td class="num">'+fmtARS(totalEcheq)+'</td></tr>';
   html+='</tbody></table></div>';
 
-  html+='<div class="planilla-total"><span>TOTAL GENERAL</span><span>'+fmtARS(totalEquiv)+'</span></div>';
+  html+='<div class="planilla-total"><span>TOTAL GENERAL</span><span>'+fmtARS(totalEquiv+impTotal)+'</span></div>';
+
+  el.innerHTML=html;
+}
+
+function addImpuesto(){
+  var concepto=document.getElementById('imp-concepto').value.trim();
+  var fecha=document.getElementById('imp-fecha').value;
+  var importe=parseFloat(document.getElementById('imp-importe').value)||0;
+  if(!concepto){showMsg('Ingresa el concepto del impuesto');return;}
+  if(importe<=0){showMsg('Ingresa un importe válido');return;}
+  state.impuestos.push({concepto:concepto,fecha:fecha,importe:importe});
+  state.unsaved=true;
+  renderImpuestos();updateStats();updateSaveMeta();
+}
+
+function removeImpuesto(idx){
+  state.impuestos.splice(idx,1);
+  state.unsaved=true;
+  renderImpuestos();updateStats();updateSaveMeta();
+}
+
+function updImpField(idx,field,val){
+  if(field==='importe') val=Math.max(0,parseFloat(val)||0);
+  state.impuestos[idx][field]=val;
+  state.unsaved=true;
+  renderImpuestos();updateStats();updateSaveMeta();
+}
+
+function renderImpuestos(){
+  var el=document.getElementById('tab-impuestos');
+  var totalImp=state.impuestos.reduce(function(s,imp){return s+imp.importe;},0);
+
+  var html='<div class="rpt-print-header"><h1>Vencimientos Impuestos</h1><p>Hijos de Salvador Muñoz S.A.</p></div>';
+  html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir</button></div>';
+
+  html+='<div class="imp-form">';
+  html+='<div class="field"><label>Concepto</label><input type="text" id="imp-concepto" placeholder="Ej: Autónomo, IIBB, Sicore..."></div>';
+  html+='<div class="field"><label>Vencimiento</label><input type="date" id="imp-fecha"></div>';
+  html+='<div class="field"><label>Importe</label><input type="number" id="imp-importe" min="0" step="1" placeholder="0"></div>';
+  html+='<button class="btn btn-acc" onclick="addImpuesto()">+ Agregar</button>';
+  html+='</div>';
+
+  if(state.impuestos.length){
+    html+='<div class="imp-table-wrap"><div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Vencimiento</th><th style="text-align:right">Importe</th><th style="width:40px"></th></tr></thead><tbody>';
+    state.impuestos.forEach(function(imp,i){
+      var fechaDisplay=imp.fecha?new Date(imp.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'—';
+      html+='<tr>';
+      html+='<td>'+esc(imp.concepto)+'</td>';
+      html+='<td style="font-size:.78rem">'+fechaDisplay+'</td>';
+      html+='<td class="num">'+fmtARS(imp.importe)+'</td>';
+      html+='<td style="text-align:center"><button class="btn-del-imp" onclick="removeImpuesto('+i+')" title="Eliminar">✕</button></td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div></div>';
+    html+='<div class="imp-total-bar"><span>TOTAL IMPUESTOS</span><span>'+fmtARS(totalImp)+'</span></div>';
+  } else {
+    html+='<div class="rpt-empty">No hay impuestos cargados. Usa el formulario para agregar vencimientos.</div>';
+  }
 
   el.innerHTML=html;
 }
@@ -1045,14 +1136,23 @@ function exportData(){
   data.push(['TRANSFERENCIAS']);
   data.push(['Proveedor','Sector','Importe']);
   transfRows.forEach(function(r){data.push(r);});
-  data.push(['SUBTOTAL TRANSFERENCIAS','',totalTransf]);
+  var impTotal=0;
+  if(state.impuestos.length){
+    data.push(['--- Impuestos ---']);
+    state.impuestos.forEach(function(imp){
+      var fechaDisplay=imp.fecha?new Date(imp.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'';
+      data.push([imp.concepto,fechaDisplay,imp.importe]);
+      impTotal+=imp.importe;
+    });
+  }
+  data.push(['SUBTOTAL TRANSFERENCIAS','',totalTransf+impTotal]);
   data.push([]);
   data.push(['ECHEQS']);
   data.push(['Proveedor','Sector','Importe']);
   echeqRows.forEach(function(r){data.push(r);});
   data.push(['SUBTOTAL ECHEQS','',totalEcheq]);
   data.push([]);
-  data.push(['TOTAL GENERAL','',totalTransf+totalEcheq]);
+  data.push(['TOTAL GENERAL','',totalTransf+totalEcheq+impTotal]);
 
   var ws=XLSX.utils.aoa_to_sheet(data);
   ws['!cols']=[{wch:45},{wch:28},{wch:18}];
