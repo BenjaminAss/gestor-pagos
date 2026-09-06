@@ -248,8 +248,8 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   .workspace{display:block !important;height:auto !important}
   .report{overflow:visible !important;padding:0 !important;height:auto !important}
   #tab-orders{display:none !important}
-  #tab-report,#tab-planilla,#tab-impuestos,#tab-flujo{display:none !important}
-  #tab-report.print-active,#tab-planilla.print-active,#tab-impuestos.print-active,#tab-flujo.print-active{display:block !important;overflow:visible !important;padding:0 !important}
+  #tab-report,#tab-planilla,#tab-impuestos,#tab-flujo,#tab-historial{display:none !important}
+  #tab-report.print-active,#tab-planilla.print-active,#tab-impuestos.print-active,#tab-flujo.print-active,#tab-historial.print-active{display:block !important;overflow:visible !important;padding:0 !important}
   .rpt-print-header{display:block !important;text-align:center;margin-bottom:.6rem;padding-bottom:.5rem;border-bottom:2px solid #1e3d59}
   .rpt-print-header h1{font-size:12pt;color:#1e3d59;margin-bottom:.1rem}
   .rpt-print-header p{font-size:8pt;color:#5a5954}
@@ -344,6 +344,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
     <div class="kpi"><div class="label">Total equiv.</div><div class="val green" id="kpi-total">$0</div><div class="sub-val" id="kpi-usd-info"></div></div>
     <div class="kpi"><div class="label">Transferencias</div><div class="val blue" id="kpi-transf">$0</div></div>
     <div class="kpi"><div class="label">Echeq</div><div class="val amber" id="kpi-echeq">$0</div></div>
+    <div class="kpi" id="kpi-delta" style="display:none"></div>
   </div>
   <div class="tabs">
     <button class="tab active" data-tab="orders">Ordenes</button>
@@ -351,6 +352,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
     <button class="tab" data-tab="planilla">Planilla de Pagos</button>
     <button class="tab" data-tab="impuestos">Impuestos</button>
     <button class="tab" data-tab="flujo">Flujo de Caja</button>
+    <button class="tab" data-tab="historial">Historial</button>
   </div>
   <div class="toolbar" id="toolbar">
     <input type="search" id="search" placeholder="Buscar proveedor u OC...">
@@ -367,7 +369,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
         <th><input type="checkbox" id="chk-all" title="Seleccionar/deseleccionar todos"></th>
         <th>OC</th><th>Fecha</th><th>Proveedor</th>
         <th>Sector</th><th>Mon</th><th>TC</th><th style="text-align:right">Importe</th><th>%</th>
-        <th>Forma de pago</th><th>Plazo</th><th>F. Pago</th><th>Ingreso</th>
+        <th>Forma de pago</th><th>Plazo</th><th>F. Pago</th><th>Obs</th><th>Ingreso</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -377,6 +379,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
   <div class="report" id="tab-planilla"></div>
   <div class="report" id="tab-impuestos"></div>
   <div class="report" id="tab-flujo"></div>
+  <div class="report" id="tab-historial"></div>
   <div class="export-bar">
     <span class="stat"><b id="exp-count">0</b> seleccionadas</span>
     <span class="stat">Total: <b id="exp-total">$0</b></span>
@@ -394,7 +397,7 @@ var PAGOS=['Transferencia','Echeq','Transferencia + Echeq'];
 var SKEY='gestor-pagos-v3';
 var activeTab='orders';
 
-var state={orders:[],selected:new Set(),sectors:[],newOCs:new Set(),paidCount:0,lastSaved:null,unsaved:false,tipoCambio:1200,impuestos:[]};
+var state={orders:[],selected:new Set(),sectors:[],newOCs:new Set(),paidCount:0,lastSaved:null,unsaved:false,tipoCambio:1200,impuestos:[],historial:[]};
 
 function extractSector(d){
   if(!d) return 'Sin Especificar';
@@ -522,6 +525,7 @@ function loadBacklog(){
     state.lastSaved=data.lastSaved||null;
     state.tipoCambio=data.tipoCambio||1200;
     state.impuestos=data.impuestos||[];
+    state.historial=data.historial||[];
     state.newOCs=new Set();
     state.unsaved=false;
     document.getElementById('tc-input').value=state.tipoCambio;
@@ -537,6 +541,7 @@ function saveBacklog(){
       paidCount:state.paidCount,
       tipoCambio:state.tipoCambio,
       impuestos:state.impuestos,
+      historial:state.historial,
       lastSaved:new Date().toISOString()
     };
     localStorage.setItem(SKEY,JSON.stringify(data));
@@ -638,6 +643,32 @@ function markPaid(){
   showDialog('Marcar como pagadas',
     'Se van a eliminar <b>'+selList.length+'</b> ordenes del sistema por un total equivalente de <b>'+fmtARS(totalPaid)+'</b>. Esta accion no se puede deshacer.',
     'Confirmar',function(){
+      var paidOrders=selList.map(function(i){return state.orders[i];});
+      var totalTransfH=0,totalEcheqH=0;
+      paidOrders.forEach(function(o){var sp=splitTransfEcheq(o);totalTransfH+=sp.transf;totalEcheqH+=sp.echeq;});
+      var impTotalH=state.impuestos.reduce(function(s,imp){return s+imp.importe;},0);
+      var sectorBreakdown={};
+      paidOrders.forEach(function(o){
+        if(!sectorBreakdown[o.sector]) sectorBreakdown[o.sector]=0;
+        sectorBreakdown[o.sector]+=efectivoARS(o);
+      });
+      var topProveedores={};
+      paidOrders.forEach(function(o){
+        var p=o.proveedor||'Sin proveedor';
+        if(!topProveedores[p]) topProveedores[p]=0;
+        topProveedores[p]+=efectivoARS(o);
+      });
+      state.historial.push({
+        fecha:new Date().toISOString(),
+        semana:getWeekLabel(new Date()),
+        cantOrdenes:paidOrders.length,
+        totalEquiv:totalPaid,
+        totalTransf:totalTransfH,
+        totalEcheq:totalEcheqH,
+        totalImpuestos:impTotalH,
+        sectores:sectorBreakdown,
+        proveedores:topProveedores
+      });
       selList.forEach(function(i){state.orders.splice(i,1);});
       state.paidCount+=selList.length;
       state.selected=new Set();state.newOCs=new Set();state.unsaved=true;
@@ -748,6 +779,7 @@ function render(){
       +'</select></td>'
       +'<td><input type="text" class="plazo-input" placeholder="30-60-90" value="'+esc(o.plazo||'')+'" onchange="updField('+o.i+',\'plazo\',this.value)"></td>'
       +'<td>'+(o.pago!=='Echeq'?'<input type="date" style="width:110px;font-size:.72rem;font-family:var(--mono)" value="'+(o.fechaPago||'')+'" onchange="updField('+o.i+',\'fechaPago\',this.value)">':'<span style="font-size:.72rem;color:var(--text-muted)">auto</span>')+'</td>'
+      +'<td><input type="text" style="width:90px;font-size:.72rem" placeholder="—" value="'+esc(o.obs||'')+'" onchange="updField('+o.i+',\'obs\',this.value)" title="'+(o.obs?esc(o.obs):'Agregar nota')+'"></td>'
       +'<td class="ingreso">'+fmtShortDate(o.fechaIngreso)+'</td>'
       +'</tr>';
   });
@@ -780,6 +812,19 @@ function updateStats(){
   document.getElementById('paid-badge').textContent=sel.length;
   var totalAmt=state.orders.reduce(function(s,o){return s+efectivoARS(o);},0);
   document.getElementById('backlog-info').innerHTML=state.orders.length+' ordenes | Total equiv.: <b>'+fmtARS(totalAmt)+'</b>';
+
+  var kpiDelta=document.getElementById('kpi-delta');
+  if(state.historial.length>0){
+    var lastH=state.historial[state.historial.length-1];
+    var dTotal=totalEquiv+impTotal-lastH.totalEquiv;
+    var dPct=lastH.totalEquiv>0?Math.round(dTotal/lastH.totalEquiv*100):0;
+    var dCol=dTotal>0?'var(--danger)':'var(--acc)';
+    var dIcon=dTotal>0?'&#9650;':'&#9660;';
+    kpiDelta.innerHTML='<div class="label">vs Semana ant.</div><div class="val" style="color:'+dCol+';font-size:.95rem">'+dIcon+' '+Math.abs(dPct)+'%</div><div class="sub-val">'+fmtARS(Math.abs(dTotal))+'</div>';
+    kpiDelta.style.display='';
+  } else {
+    kpiDelta.style.display='none';
+  }
 }
 
 function toggleSel(i){state.selected.has(i)?state.selected.delete(i):state.selected.add(i);render();}
@@ -827,14 +872,17 @@ function switchTab(tab){
   document.getElementById('tab-planilla').style.display=tab==='planilla'?'block':'none';
   document.getElementById('tab-impuestos').style.display=tab==='impuestos'?'block':'none';
   document.getElementById('tab-flujo').style.display=tab==='flujo'?'block':'none';
+  document.getElementById('tab-historial').style.display=tab==='historial'?'block':'none';
   document.getElementById('tab-report').classList.toggle('print-active',tab==='report');
   document.getElementById('tab-planilla').classList.toggle('print-active',tab==='planilla');
   document.getElementById('tab-impuestos').classList.toggle('print-active',tab==='impuestos');
   document.getElementById('tab-flujo').classList.toggle('print-active',tab==='flujo');
+  document.getElementById('tab-historial').classList.toggle('print-active',tab==='historial');
   if(tab==='report') renderReport();
   if(tab==='planilla') renderPlanilla();
   if(tab==='impuestos') renderImpuestos();
   if(tab==='flujo') renderFlujo();
+  if(tab==='historial') renderHistorial();
 }
 
 var chartInstances=[];
@@ -1370,6 +1418,187 @@ function showManualPayForm(){
     rebuildSectors();populateFilters();render();updateSaveMeta();showWorkspace();
     showMsg('Pago manual agregado: '+prov+' - '+fmtARS(importe));
   };
+}
+
+function getWeekLabel(d){
+  var day=d.getDay();var diff=d.getDate()-day+(day===0?-6:1);
+  var monday=new Date(d);monday.setDate(diff);
+  var friday=new Date(monday);friday.setDate(monday.getDate()+4);
+  return fmtShortDate(monday.toISOString())+' - '+fmtShortDate(friday.toISOString());
+}
+
+function deleteHistorial(idx){
+  showDialog('Eliminar registro','Eliminar este registro del historial? Esta accion no se puede deshacer.','Eliminar',function(){
+    state.historial.splice(idx,1);
+    state.unsaved=true;
+    renderHistorial();updateSaveMeta();
+    showMsg('Registro eliminado del historial');
+  });
+}
+
+function renderHistorial(){
+  destroyCharts();
+  var el=document.getElementById('tab-historial');
+  var hist=state.historial;
+
+  var today=new Date();
+  var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+  var html='<div class="rpt-print-header"><h1>Historial de Pagos Semanales</h1><p>Hijos de Salvador Muñoz S.A. &mdash; '+fechaStr+'</p></div>';
+  html+='<div class="rpt-toolbar"><button class="btn btn-pri" onclick="window.print()">Imprimir</button></div>';
+
+  if(!hist.length){
+    el.innerHTML=html+'<div class="rpt-empty">No hay registros en el historial. Se genera un registro cada vez que marcas ordenes como pagadas.</div>';
+    return;
+  }
+
+  var totalHistorico=hist.reduce(function(s,h){return s+h.totalEquiv;},0);
+  var totalOrdenes=hist.reduce(function(s,h){return s+h.cantOrdenes;},0);
+  var promedioSemanal=totalHistorico/hist.length;
+
+  html+='<div class="flujo-resumen">';
+  html+='<div class="flujo-resumen-card"><div class="label">Total historico</div><div class="val" style="color:var(--pri)">'+fmtARS(totalHistorico)+'</div></div>';
+  html+='<div class="flujo-resumen-card"><div class="label">Promedio semanal</div><div class="val" style="color:var(--acc)">'+fmtARS(promedioSemanal)+'</div></div>';
+  html+='<div class="flujo-resumen-card"><div class="label">Semanas registradas</div><div class="val" style="color:var(--text)">'+hist.length+'</div></div>';
+  html+='<div class="flujo-resumen-card"><div class="label">Ordenes pagadas</div><div class="val" style="color:var(--warn)">'+totalOrdenes+'</div></div>';
+  html+='</div>';
+
+  if(hist.length>=2){
+    var last=hist[hist.length-1];
+    var prev=hist[hist.length-2];
+    var delta=last.totalEquiv-prev.totalEquiv;
+    var deltaPct=prev.totalEquiv>0?Math.round(delta/prev.totalEquiv*100):0;
+    var deltaColor=delta>0?'var(--danger)':'var(--acc)';
+    var deltaIcon=delta>0?'&#9650;':'&#9660;';
+    var deltaLabel=delta>0?'mas que la semana anterior':'menos que la semana anterior';
+    html+='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:.8rem 1.2rem;margin-bottom:1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">';
+    html+='<div style="font-size:.78rem;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.04em">vs Semana anterior</div>';
+    html+='<div style="font-size:1.1rem;font-weight:700;color:'+deltaColor+'">'+deltaIcon+' '+fmtARS(Math.abs(delta))+' ('+Math.abs(deltaPct)+'%)</div>';
+    html+='<div style="font-size:.78rem;color:var(--text-muted)">'+deltaLabel+'</div>';
+    html+='</div>';
+  }
+
+  html+='<div class="rpt-chart-box tall" style="margin-bottom:1.2rem"><h3>Tendencia de Pagos Semanales</h3><canvas id="chart-historial"></canvas></div>';
+
+  if(hist.length>=2){
+    html+='<div class="rpt-dash">';
+    html+='<div class="rpt-chart-box"><h3>Composicion por Forma de Pago</h3><canvas id="chart-hist-tipo"></canvas></div>';
+    html+='<div class="rpt-chart-box"><h3>Ordenes por Semana</h3><canvas id="chart-hist-ordenes"></canvas></div>';
+    html+='</div>';
+  }
+
+  html+='<h2>Detalle por Semana</h2>';
+  html+='<div class="rpt-table-wrap"><table class="rpt-table"><thead><tr><th>Semana</th><th>Fecha</th><th style="text-align:center">Ordenes</th><th style="text-align:right">Transferencias</th><th style="text-align:right">Echeq</th><th style="text-align:right">Impuestos</th><th style="text-align:right">Total</th><th style="text-align:right">vs Anterior</th><th style="width:40px"></th></tr></thead><tbody>';
+  for(var i=hist.length-1;i>=0;i--){
+    var h=hist[i];
+    var fechaH=new Date(h.fecha);
+    var fechaDisplay=fechaH.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
+    var deltaStr='—';
+    if(i>0){
+      var dlt=h.totalEquiv-hist[i-1].totalEquiv;
+      var dltPct=hist[i-1].totalEquiv>0?Math.round(dlt/hist[i-1].totalEquiv*100):0;
+      var dltCol=dlt>0?'var(--danger)':'var(--acc)';
+      deltaStr='<span style="color:'+dltCol+';font-weight:600">'+(dlt>0?'+':'')+dltPct+'%</span>';
+    }
+    html+='<tr>';
+    html+='<td style="font-weight:600;font-size:.78rem;white-space:nowrap">'+(h.semana||'—')+'</td>';
+    html+='<td style="font-size:.78rem">'+fechaDisplay+'</td>';
+    html+='<td style="text-align:center">'+h.cantOrdenes+'</td>';
+    html+='<td class="num">'+fmtARS(h.totalTransf||0)+'</td>';
+    html+='<td class="num">'+fmtARS(h.totalEcheq||0)+'</td>';
+    html+='<td class="num">'+fmtARS(h.totalImpuestos||0)+'</td>';
+    html+='<td class="num" style="font-weight:700">'+fmtARS(h.totalEquiv)+'</td>';
+    html+='<td class="num">'+deltaStr+'</td>';
+    html+='<td style="text-align:center"><button class="btn-del-imp" onclick="deleteHistorial('+i+')" title="Eliminar">✕</button></td>';
+    html+='</tr>';
+  }
+  html+='<tr class="rpt-total"><td>TOTAL</td><td></td><td style="text-align:center">'+totalOrdenes+'</td><td class="num">'+fmtARS(hist.reduce(function(s,h){return s+(h.totalTransf||0);},0))+'</td><td class="num">'+fmtARS(hist.reduce(function(s,h){return s+(h.totalEcheq||0);},0))+'</td><td class="num">'+fmtARS(hist.reduce(function(s,h){return s+(h.totalImpuestos||0);},0))+'</td><td class="num">'+fmtARS(totalHistorico)+'</td><td></td><td></td></tr>';
+  html+='</tbody></table></div>';
+
+  el.innerHTML=html;
+
+  try{
+    var isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    var root=document.documentElement;
+    if(root.dataset.theme==='dark') isDark=true;
+    if(root.dataset.theme==='light') isDark=false;
+    var txtCol=isDark?'#eae9e5':'#1a1a18';
+    var mutedCol=isDark?'#7a786f':'#8a887f';
+    var borderCol=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)';
+
+    var labels=hist.map(function(h){return h.semana||'—';});
+    var vals=hist.map(function(h){return h.totalEquiv;});
+    var avgLine=hist.map(function(){return promedioSemanal;});
+
+    var c1=new Chart(document.getElementById('chart-historial'),{
+      type:'bar',
+      data:{
+        labels:labels,
+        datasets:[
+          {type:'bar',label:'Total pagado',data:vals,backgroundColor:'rgba(30,61,89,.7)',borderRadius:4},
+          {type:'line',label:'Promedio',data:avgLine,borderColor:'#a93a31',borderDash:[6,4],borderWidth:2,pointRadius:0,fill:false}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{color:txtCol,font:{family:'Figtree,system-ui,sans-serif',size:11}}},
+          tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtARS(ctx.raw);}}}
+        },
+        scales:{
+          x:{grid:{display:false},ticks:{color:txtCol,font:{size:10}}},
+          y:{grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}}
+        },
+        animation:{duration:600}
+      }
+    });
+    chartInstances.push(c1);
+
+    if(hist.length>=2){
+      var dTransf=hist.map(function(h){return h.totalTransf||0;});
+      var dEcheq=hist.map(function(h){return h.totalEcheq||0;});
+      var dImp=hist.map(function(h){return h.totalImpuestos||0;});
+      var c2=new Chart(document.getElementById('chart-hist-tipo'),{
+        type:'bar',
+        data:{
+          labels:labels,
+          datasets:[
+            {label:'Transferencias',data:dTransf,backgroundColor:'rgba(58,125,92,.7)',borderRadius:4,stack:'s'},
+            {label:'Echeq',data:dEcheq,backgroundColor:'rgba(192,124,28,.7)',borderRadius:4,stack:'s'},
+            {label:'Impuestos',data:dImp,backgroundColor:'rgba(30,61,89,.7)',borderRadius:4,stack:'s'}
+          ]
+        },
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{labels:{color:txtCol,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+fmtARS(ctx.raw);}}}},
+          scales:{
+            x:{stacked:true,grid:{display:false},ticks:{color:txtCol,font:{size:9}}},
+            y:{stacked:true,grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},callback:function(v){return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v;}}}
+          },
+          animation:{duration:600}
+        }
+      });
+      chartInstances.push(c2);
+
+      var dOrdenes=hist.map(function(h){return h.cantOrdenes;});
+      var c3=new Chart(document.getElementById('chart-hist-ordenes'),{
+        type:'line',
+        data:{
+          labels:labels,
+          datasets:[{label:'Ordenes',data:dOrdenes,borderColor:'#3a7d5c',backgroundColor:'rgba(58,125,92,.1)',pointBackgroundColor:'#3a7d5c',pointRadius:5,borderWidth:2,fill:true,tension:.3}]
+        },
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.raw+' ordenes';}}}},
+          scales:{
+            x:{grid:{display:false},ticks:{color:txtCol,font:{size:9}}},
+            y:{beginAtZero:true,grid:{color:borderCol},ticks:{color:mutedCol,font:{size:10},stepSize:1}}
+          },
+          animation:{duration:600}
+        }
+      });
+      chartInstances.push(c3);
+    }
+  }catch(e){}
 }
 
 function exportData(){
