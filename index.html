@@ -210,6 +210,16 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
 .btn-del-imp{background:none;border:none;color:var(--danger);cursor:pointer;font-size:.9rem;padding:.2rem .4rem;border-radius:4px;transition:background .2s}
 .btn-del-imp:hover{background:var(--danger-light)}
 
+.sinoc-tag{display:inline-block;padding:.05rem .35rem;border-radius:3px;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:var(--danger-light);color:var(--danger);margin-left:.3rem;vertical-align:middle}
+.dialog-form{display:flex;flex-direction:column;gap:.6rem;margin-bottom:1rem}
+.dialog-form .field{display:flex;flex-direction:column;gap:.15rem}
+.dialog-form .field label{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:500}
+.dialog-form .field input,.dialog-form .field select{padding:.4rem .6rem;border:1px solid var(--border);border-radius:6px;font-size:.85rem;background:var(--bg);color:var(--text);font-family:var(--font)}
+.dialog-form .field input:focus,.dialog-form .field select:focus{border-color:var(--acc);outline:none}
+.dialog-form .field input[type=number]{font-family:var(--mono);text-align:right}
+.dialog-form .row{display:flex;gap:.5rem}
+.dialog-form .row .field{flex:1}
+
 .flujo-mes{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden}
 .flujo-mes-header{display:flex;justify-content:space-between;align-items:center;padding:.7rem 1rem;background:var(--bg-row-alt);border-bottom:1px solid var(--border);cursor:pointer}
 .flujo-mes-header h3{font-size:.85rem;font-weight:600;color:var(--pri);margin:0}
@@ -320,6 +330,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
       <button class="btn btn-danger" id="btn-mark-paid" disabled>Marcar pagadas <span class="badge" id="paid-badge">0</span></button>
       <div class="sep"></div>
       <button class="btn btn-sm" id="btn-import-pay">Importar pagos</button>
+      <button class="btn btn-sm" id="btn-pago-manual" style="color:var(--danger);border-color:var(--danger)">+ Pago sin OC</button>
     </div>
     <div class="tc-group">
       <label>TC U$S:</label>
@@ -346,7 +357,7 @@ td.ingreso{font-size:.72rem;color:var(--text-muted);white-space:nowrap}
     <select id="filter-sector"><option value="">Todos los sectores</option></select>
     <select id="filter-pago"><option value="">Todas las formas de pago</option></select>
     <select id="filter-moneda"><option value="">Todas monedas</option><option value="ARS">ARS</option><option value="USD">USD</option></select>
-    <select id="filter-new"><option value="">Todas</option><option value="new">Solo nuevas</option><option value="prev">Solo anteriores</option></select>
+    <select id="filter-new"><option value="">Todas</option><option value="new">Solo nuevas</option><option value="prev">Solo anteriores</option><option value="sinoc">Sin OC (pendientes doc.)</option></select>
     <button class="btn btn-sm" id="btn-sel-all">Seleccionar visibles</button>
     <button class="btn btn-sm" id="btn-desel-all">Deseleccionar visibles</button>
   </div>
@@ -697,6 +708,7 @@ function getFiltered(){
     if(mf&&o.moneda!==mf) return false;
     if(nf==='new'&&!state.newOCs.has(o.i)) return false;
     if(nf==='prev'&&state.newOCs.has(o.i)) return false;
+    if(nf==='sinoc'&&!o.manual) return false;
     return true;
   });
 }
@@ -716,7 +728,7 @@ function render(){
     var showEf=o.porcentaje!==100;
     html+='<tr class="'+cls+'" data-i="'+o.i+'">'
       +'<td style="text-align:center"><input type="checkbox" '+(sel?'checked':'')+' onchange="toggleSel('+o.i+')"></td>'
-      +'<td class="oc" title="'+esc(o.desc)+'">'+esc(o.oc)+(isNew?'<span class="new-tag">nueva</span>':'')+'</td>'
+      +'<td class="oc" title="'+esc(o.desc)+'">'+esc(o.oc)+(isNew?'<span class="new-tag">nueva</span>':'')+(o.manual?'<span class="sinoc-tag">sin OC</span>':'')+'</td>'
       +'<td class="fecha">'+fmtDate(o.fecha)+'</td>'
       +'<td class="prov" title="'+esc(o.proveedor)+'">'+esc(o.proveedor)+'</td>'
       +'<td><input type="text" list="sector-list" value="'+esc(o.sector)+'" onchange="updField('+o.i+',\'sector\',this.value)"></td>'
@@ -1302,6 +1314,64 @@ function renderImpuestos(){
   el.innerHTML=html;
 }
 
+function showManualPayForm(){
+  var overlay=document.getElementById('overlay');
+  var manualCount=state.orders.filter(function(o){return o.manual;}).length;
+  var nextId='MAN-'+(manualCount+1).toString().padStart(3,'0');
+  overlay.innerHTML='<div class="dialog" style="max-width:520px"><h3>Agregar pago sin OC</h3>'
+    +'<p style="margin-bottom:.7rem">Este pago quedara marcado como pendiente de documentacion.</p>'
+    +'<div class="dialog-form">'
+    +'<div class="field"><label>Proveedor</label><input type="text" id="man-prov" placeholder="Nombre del proveedor"></div>'
+    +'<div class="row">'
+    +'<div class="field"><label>Sector</label><input type="text" id="man-sector" list="sector-list" placeholder="Sector"></div>'
+    +'<div class="field"><label>Importe</label><input type="number" id="man-importe" min="0" step="1" placeholder="0"></div>'
+    +'</div>'
+    +'<div class="row">'
+    +'<div class="field"><label>Forma de pago</label><select id="man-pago"><option>Transferencia</option><option>Echeq</option><option>Transferencia + Echeq</option></select></div>'
+    +'<div class="field"><label>Plazo</label><input type="text" id="man-plazo" placeholder="0 / 30-60-90"></div>'
+    +'</div>'
+    +'<div class="row">'
+    +'<div class="field"><label>Fecha de pago</label><input type="date" id="man-fecha"></div>'
+    +'<div class="field"><label>Observaciones</label><input type="text" id="man-obs" placeholder="Motivo, referencia..."></div>'
+    +'</div>'
+    +'</div>'
+    +'<div class="actions"><button class="btn" id="dlg-cancel">Cancelar</button><button class="btn btn-acc" id="dlg-confirm">Agregar</button></div></div>';
+  overlay.style.display='flex';
+  document.getElementById('dlg-cancel').onclick=function(){overlay.style.display='none';};
+  document.getElementById('dlg-confirm').onclick=function(){
+    var prov=document.getElementById('man-prov').value.trim();
+    var importe=parseFloat(document.getElementById('man-importe').value)||0;
+    if(!prov){showMsg('Ingresa el proveedor');return;}
+    if(importe<=0){showMsg('Ingresa un importe válido');return;}
+    var order={
+      oc:nextId,
+      fecha:new Date().toISOString().split('T')[0],
+      desc:'Pago manual sin OC',
+      proveedor:prov,
+      empresa:'',
+      total:importe,
+      sector:normalizeSector(document.getElementById('man-sector').value.trim()||'Sin Especificar'),
+      pago:document.getElementById('man-pago').value,
+      plazo:document.getElementById('man-plazo').value.trim()||'0',
+      moneda:'ARS',
+      tipoCambio:1,
+      porcentaje:100,
+      fechaIngreso:new Date().toISOString().split('T')[0],
+      fechaPago:document.getElementById('man-fecha').value||'',
+      obs:document.getElementById('man-obs').value.trim()||'',
+      manual:true
+    };
+    var idx=state.orders.length;
+    state.orders.push(order);
+    state.selected.add(idx);
+    state.newOCs.add(idx);
+    state.unsaved=true;
+    overlay.style.display='none';
+    rebuildSectors();populateFilters();render();updateSaveMeta();showWorkspace();
+    showMsg('Pago manual agregado: '+prov+' - '+fmtARS(importe));
+  };
+}
+
 function exportData(){
   var sel=[...state.selected].sort(function(a,b){return a-b;}).map(function(i){return state.orders[i];}).filter(Boolean);
   if(!sel.length){showMsg('Selecciona al menos una orden');return;}
@@ -1382,6 +1452,7 @@ document.getElementById('file-pay').addEventListener('change',function(e){if(e.t
 document.getElementById('btn-add-oc').addEventListener('click',function(){document.getElementById('file-add').click();});
 document.getElementById('btn-import-pay').addEventListener('click',function(){document.getElementById('file-pay').click();});
 document.getElementById('btn-mark-paid').addEventListener('click',markPaid);
+document.getElementById('btn-pago-manual').addEventListener('click',showManualPayForm);
 document.getElementById('btn-save').addEventListener('click',saveBacklog);
 document.getElementById('btn-export').addEventListener('click',exportData);
 
