@@ -1207,6 +1207,33 @@ function openVistaGerencial(){
   transfRows.sort(function(a,b){return b.monto-a.monto;});
   echeqRows.sort(function(a,b){return b.monto-a.monto;});
 
+  var transfProvLabels=JSON.stringify(transfRows.slice(0,12).map(function(r){return r.prov.length>22?r.prov.substring(0,19)+'...':r.prov;}));
+  var transfProvVals=JSON.stringify(transfRows.slice(0,12).map(function(r){return r.monto;}));
+  var echeqProvLabels=JSON.stringify(echeqRows.slice(0,12).map(function(r){return r.prov.length>22?r.prov.substring(0,19)+'...':r.prov;}));
+  var echeqProvVals=JSON.stringify(echeqRows.slice(0,12).map(function(r){return r.monto;}));
+
+  var echeqMesesMap={};
+  sel.forEach(function(o){
+    var sp=splitTransfEcheq(o);
+    if(sp.echeq<=0) return;
+    var parts=String(o.plazo||'0').split('-').map(Number).filter(function(n){return !isNaN(n)&&n>=30;});
+    if(!parts.length) parts=[30];
+    var perPart=sp.echeq/parts.length;
+    var baseDate=o.fecha?new Date(o.fecha+'T12:00:00'):new Date();
+    if(isNaN(baseDate.getTime())) baseDate=new Date();
+    parts.forEach(function(dias){
+      var payDate=new Date(baseDate);
+      payDate.setDate(payDate.getDate()+dias);
+      var mk=payDate.getFullYear()+'-'+String(payDate.getMonth()+1).padStart(2,'0');
+      if(!echeqMesesMap[mk]) echeqMesesMap[mk]=0;
+      echeqMesesMap[mk]+=perPart;
+    });
+  });
+  var echeqMesesKeys=Object.keys(echeqMesesMap).sort();
+  var MESES_CORTOS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var echeqMesesLabelsJSON=JSON.stringify(echeqMesesKeys.map(function(mk){var p=mk.split('-');return MESES_CORTOS[parseInt(p[1])-1]+' '+p[0];}));
+  var echeqMesesValsJSON=JSON.stringify(echeqMesesKeys.map(function(mk){return Math.round(echeqMesesMap[mk]);}));
+
   var today=new Date();
   var fechaStr=today.toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   var semana=getWeekLabel(today);
@@ -1294,24 +1321,12 @@ function openVistaGerencial(){
   doc+='<div class="chart-box"><h3>Top Sectores</h3><canvas id="ch-sector"></canvas></div>';
   doc+='</div>';
 
-  doc+='<h2 style="color:#3a7d5c">Transferencias</h2>';
-  doc+='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Sector</th><th class="num">Importe</th></tr></thead><tbody>';
-  transfRows.forEach(function(r){doc+='<tr><td>'+esc(r.prov)+'</td><td style="font-size:.78rem">'+esc(r.sectors)+'</td><td class="num">'+fmtARS(r.monto)+'</td></tr>';});
-  if(state.impuestos.length){
-    doc+='<tr class="imp-sep"><td colspan="3">Impuestos</td></tr>';
-    state.impuestos.forEach(function(imp){
-      var fd=imp.fecha?new Date(imp.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'';
-      doc+='<tr><td>'+esc(imp.concepto)+'</td><td style="font-size:.78rem">'+fd+'</td><td class="num">'+fmtARS(imp.importe)+'</td></tr>';
-    });
-  }
-  doc+='<tr class="total"><td>SUBTOTAL</td><td></td><td class="num">'+fmtARS(totalTransf)+'</td></tr>';
-  doc+='</tbody></table></div>';
+  doc+='<div class="charts-row">';
+  doc+='<div class="chart-box"><h3>Transferencias por Proveedor</h3><canvas id="ch-transf-prov"></canvas></div>';
+  doc+='<div class="chart-box"><h3>Echeqs por Proveedor</h3><canvas id="ch-echeq-prov"></canvas></div>';
+  doc+='</div>';
 
-  doc+='<h2 style="color:#c07c1c">Echeqs</h2>';
-  doc+='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Sector</th><th class="num">Importe</th></tr></thead><tbody>';
-  echeqRows.forEach(function(r){doc+='<tr><td>'+esc(r.prov)+'</td><td style="font-size:.78rem">'+esc(r.sectors)+'</td><td class="num">'+fmtARS(r.monto)+'</td></tr>';});
-  doc+='<tr class="total"><td>SUBTOTAL</td><td></td><td class="num">'+fmtARS(totalEcheq)+'</td></tr>';
-  doc+='</tbody></table></div>';
+  doc+='<div class="chart-box tall" style="margin-bottom:1.2rem"><h3>Pareto de Pagos &mdash; Analisis 80/20</h3><canvas id="ch-pareto"></canvas></div>';
 
   doc+='<div class="total-bar"><span>TOTAL GENERAL</span><span>'+fmtARS(totalEquiv)+'</span></div>';
 
@@ -1361,34 +1376,23 @@ function openVistaGerencial(){
 
   doc+='<div class="chart-box" style="height:250px;margin-bottom:1.2rem"><h3>Egresos por Dia</h3><canvas id="ch-flujo"></canvas></div>';
 
-  doc+='<div class="tbl-wrap"><table><thead><tr><th>Dia</th><th>Fecha</th><th>Detalle</th><th class="num">Monto</th></tr></thead><tbody>';
-  diasData.forEach(function(dd){
-    var fechaDD=dd.fecha.toLocaleDateString('es-AR',{day:'2-digit',month:'short'});
-    var isToday=dd.iso===todayISO;
-    var rowStyle=isToday?' style="background:rgba(58,125,92,.06)"':'';
-    if(dd.items.length){
-      dd.items.forEach(function(it,ii){
-        doc+='<tr'+rowStyle+'><td'+(ii===0?' rowspan="'+dd.items.length+'"':'')+'>'+(ii===0?dd.label+(isToday?' <span style="font-size:.65rem;color:#3a7d5c;font-weight:700">HOY</span>':''):'')+'</td>';
-        if(ii===0) doc+='<td'+' rowspan="'+dd.items.length+'">'+fechaDD+'</td>';
-        doc+='<td style="font-size:.78rem">'+esc(it.desc)+'</td><td class="num">'+fmtARS(it.monto)+'</td></tr>';
-      });
-    } else {
-      doc+='<tr'+rowStyle+'><td>'+dd.label+(isToday?' <span style="font-size:.65rem;color:#3a7d5c;font-weight:700">HOY</span>':'')+'</td><td>'+fechaDD+'</td><td style="font-size:.78rem;color:#8a887f">Sin pagos programados</td><td class="num" style="color:#8a887f">$0</td></tr>';
-    }
-  });
-  doc+='<tr class="total"><td>TOTAL SEMANAL</td><td></td><td></td><td class="num">'+fmtARS(semTotal)+'</td></tr>';
-  doc+='</tbody></table></div>';
+  if(echeqMesesKeys.length){
+    doc+='<h2 style="color:#c07c1c;font-size:1rem;margin-top:1.5rem;border-bottom:2px solid #c07c1c">Echeqs Mensuales</h2>';
+    doc+='<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">';
+    doc+='<div class="kpi-card amber"><div class="label">Total Echeqs</div><div class="val">'+fmtARS(totalEcheq)+'</div></div>';
+    doc+='<div class="kpi-card"><div class="label">Meses</div><div class="val" style="color:#5a5954">'+echeqMesesKeys.length+'</div></div>';
+    doc+='</div>';
+    doc+='<div class="chart-box" style="height:280px;margin-bottom:1.2rem"><h3>Vencimientos de Echeqs por Mes</h3><canvas id="ch-echeq-mes"></canvas></div>';
+  }
 
-  // --- IMPUESTOS ---
   if(state.impuestos.length){
-    doc+='<h2 style="color:#a93a31">Impuestos y Vencimientos</h2>';
-    doc+='<div class="tbl-wrap"><table><thead><tr><th>Concepto</th><th>Vencimiento</th><th class="num">Importe</th></tr></thead><tbody>';
+    doc+='<h2 style="color:#a93a31;font-size:.9rem;margin-top:1.5rem;border-bottom:1px solid #a93a31">Impuestos y Vencimientos</h2>';
+    doc+='<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
     state.impuestos.forEach(function(imp){
       var fd=imp.fecha?new Date(imp.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'—';
-      doc+='<tr><td>'+esc(imp.concepto)+'</td><td style="font-size:.78rem">'+fd+'</td><td class="num">'+fmtARS(imp.importe)+'</td></tr>';
+      doc+='<div class="kpi-card"><div class="label">'+esc(imp.concepto)+' &middot; '+fd+'</div><div class="val" style="color:#a93a31">'+fmtARS(imp.importe)+'</div></div>';
     });
-    doc+='<tr class="total"><td>TOTAL IMPUESTOS</td><td></td><td class="num">'+fmtARS(impTotal)+'</td></tr>';
-    doc+='</tbody></table></div>';
+    doc+='</div>';
   }
 
   // --- HISTORIAL ---
@@ -1415,32 +1419,11 @@ function openVistaGerencial(){
 
     doc+='<div class="chart-box" style="height:280px;margin-bottom:1rem"><h3>Tendencia de Pagos</h3><canvas id="ch-hist"></canvas></div>';
 
-    doc+='<div class="tbl-wrap"><table><thead><tr><th>Semana</th><th>Fecha</th><th style="text-align:center">Ordenes</th><th class="num">Transferencias</th><th class="num">Echeq</th><th class="num">Impuestos</th><th class="num">Total</th><th class="num">vs Anterior</th></tr></thead><tbody>';
-    for(var hi=hist.length-1;hi>=0;hi--){
-      var h=hist[hi];
-      var fH=new Date(h.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
-      var dStr='—';
-      if(hi>0){
-        var dlt=h.totalEquiv-hist[hi-1].totalEquiv;
-        var dltP=hist[hi-1].totalEquiv>0?Math.round(dlt/hist[hi-1].totalEquiv*100):0;
-        var dltC=dlt>0?'#a93a31':'#3a7d5c';
-        dStr='<span style="color:'+dltC+';font-weight:600">'+(dlt>0?'+':'')+dltP+'%</span>';
-      }
-      doc+='<tr><td style="font-weight:600;font-size:.78rem;white-space:nowrap">'+(h.semana||'—')+'</td><td style="font-size:.78rem">'+fH+'</td><td style="text-align:center">'+h.cantOrdenes+'</td><td class="num">'+fmtARS(h.totalTransf||0)+'</td><td class="num">'+fmtARS(h.totalEcheq||0)+'</td><td class="num">'+fmtARS(h.totalImpuestos||0)+'</td><td class="num" style="font-weight:700">'+fmtARS(h.totalEquiv)+'</td><td class="num">'+dStr+'</td></tr>';
+    if(hist.length>=2){
+      doc+='<div class="chart-box" style="height:280px;margin-bottom:1rem"><h3>Composicion por Tipo de Pago</h3><canvas id="ch-hist-comp"></canvas></div>';
     }
-    doc+='<tr class="total"><td>TOTAL</td><td></td><td style="text-align:center">'+totalOrd+'</td><td class="num">'+fmtARS(hist.reduce(function(s,h){return s+(h.totalTransf||0);},0))+'</td><td class="num">'+fmtARS(hist.reduce(function(s,h){return s+(h.totalEcheq||0);},0))+'</td><td class="num">'+fmtARS(hist.reduce(function(s,h){return s+(h.totalImpuestos||0);},0))+'</td><td class="num">'+fmtARS(totalHist)+'</td><td></td></tr>';
-    doc+='</tbody></table></div>';
   }
 
-  // --- DETALLE ---
-  doc+='<h2>Detalle de Ordenes Seleccionadas</h2>';
-  doc+='<div class="tbl-wrap"><table><thead><tr><th>OC</th><th>Proveedor</th><th>Sector</th><th>Mon</th><th class="num">Importe</th><th class="num">Equiv. ARS</th><th>Forma</th><th>Plazo</th><th>F. Pago</th></tr></thead><tbody>';
-  sel.forEach(function(o,vi){
-    var eARS=efectivoARS(o);var ef=efectivo(o);
-    var fpDisplay=o.fechaPago?new Date(o.fechaPago+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'}):'—';
-    doc+='<tr'+(vi%2?' style="background:#f4f4f1"':'')+'><td style="font-family:monospace;font-size:.76rem;color:#1e3d59;font-weight:500">'+esc(o.oc)+'</td><td>'+esc(o.proveedor)+'</td><td>'+esc(o.sector)+'</td><td>'+o.moneda+'</td><td class="num">'+fmtMon(ef,o.moneda)+'</td><td class="num">'+fmtARS(eARS)+'</td><td>'+esc(o.pago)+'</td><td>'+esc(o.plazo||'-')+'</td><td style="font-size:.78rem">'+fpDisplay+'</td></tr>';
-  });
-  doc+='</tbody></table></div>';
 
   doc+='<div class="footer">Reporte generado automaticamente por Gestor de Pagos · Hijos de Salvador Muñoz S.A. · '+fechaStr+'</div>';
   doc+='</div>';
@@ -1449,11 +1432,17 @@ function openVistaGerencial(){
   doc+='<script>'
     +'function fmtV(v){return v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(0)+"K":v;}'
     +'var txtC="#1a1a18",mutC="#8a887f",brdC="#dddbd6";'
+    +'var barOpts={indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return fmtV(c.raw);}}}},scales:{x:{grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}},y:{grid:{display:false},ticks:{color:txtC,font:{family:"Figtree,system-ui,sans-serif",size:11}}}},animation:{duration:600}};'
     +'try{'
     +'new Chart(document.getElementById("ch-pago"),{type:"doughnut",data:{labels:["Transferencias","Echeqs"],datasets:[{data:['+totalTransf+','+totalEcheq+'],backgroundColor:["#3a7d5c","#c07c1c"],borderWidth:1,borderColor:brdC}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:txtC,font:{family:"Figtree,system-ui,sans-serif",size:12},padding:12}}},animation:{duration:600}}});'
-    +'new Chart(document.getElementById("ch-sector"),{type:"bar",data:{labels:'+sectorLabels+',datasets:[{data:'+sectorVals+',backgroundColor:"#1e3d59",borderRadius:4,barThickness:18}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}},y:{grid:{display:false},ticks:{color:txtC,font:{family:"Figtree,system-ui,sans-serif",size:11}}}},animation:{duration:600}}});'
+    +'new Chart(document.getElementById("ch-sector"),{type:"bar",data:{labels:'+sectorLabels+',datasets:[{data:'+sectorVals+',backgroundColor:"#1e3d59",borderRadius:4,barThickness:18}]},options:barOpts});'
+    +'var chTP=document.getElementById("ch-transf-prov");if(chTP){new Chart(chTP,{type:"bar",data:{labels:'+transfProvLabels+',datasets:[{data:'+transfProvVals+',backgroundColor:"#3a7d5c",borderRadius:4,barThickness:16}]},options:barOpts});}'
+    +'var chEP=document.getElementById("ch-echeq-prov");if(chEP){new Chart(chEP,{type:"bar",data:{labels:'+echeqProvLabels+',datasets:[{data:'+echeqProvVals+',backgroundColor:"#c07c1c",borderRadius:4,barThickness:16}]},options:barOpts});}'
+    +'var chPa=document.getElementById("ch-pareto");if(chPa){var pV='+paretoVals+';var pT=pV.reduce(function(a,b){return a+b;},0);var cP=[];var cm=0;pV.forEach(function(v){cm+=v;cP.push(Math.round(cm/pT*1000)/10);});var i80=cP.findIndex(function(p){return p>=80;});var bC=pV.map(function(_,i){return i<=i80?"#1e3d59":"#a0b8c8";});new Chart(chPa,{type:"bar",data:{labels:'+paretoLabels+',datasets:[{type:"bar",label:"Monto",data:pV,backgroundColor:bC,borderRadius:4,yAxisID:"y",order:2},{type:"line",label:"% Acumulado",data:cP,borderColor:"#c07c1c",pointBackgroundColor:"#c07c1c",pointRadius:4,borderWidth:2,fill:false,yAxisID:"y1",order:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:txtC,font:{size:10}}},tooltip:{callbacks:{label:function(c){return c.datasetIndex===0?"Monto: "+fmtV(c.raw):"Acumulado: "+c.raw+"%";}}}},scales:{x:{grid:{display:false},ticks:{color:txtC,font:{size:10},maxRotation:45}},y:{position:"left",grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}},y1:{position:"right",min:0,max:100,grid:{drawOnChartArea:false},ticks:{color:"#c07c1c",font:{size:10},callback:function(v){return v+"%";}}}},animation:{duration:600}}});}'
     +'var chF=document.getElementById("ch-flujo");if(chF){new Chart(chF,{type:"bar",data:{labels:'+diasLabelsJSON+',datasets:[{data:'+diasValsJSON+',backgroundColor:'+todayIdxJSON+',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return fmtV(c.raw);}}}},scales:{x:{grid:{display:false},ticks:{color:txtC,font:{size:11}}},y:{grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}}},animation:{duration:600}}});}'
+    +'var chEM=document.getElementById("ch-echeq-mes");if(chEM){new Chart(chEM,{type:"bar",data:{labels:'+echeqMesesLabelsJSON+',datasets:[{data:'+echeqMesesValsJSON+',backgroundColor:"rgba(192,124,28,.7)",borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return fmtV(c.raw);}}}},scales:{x:{grid:{display:false},ticks:{color:txtC,font:{size:11}}},y:{grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}}},animation:{duration:600}}});}'
     +(hist.length?'var chH=document.getElementById("ch-hist");if(chH){new Chart(chH,{type:"bar",data:{labels:'+histLabelsJSON+',datasets:[{type:"bar",label:"Total",data:'+histValsJSON+',backgroundColor:"rgba(30,61,89,.7)",borderRadius:4},{type:"line",label:"Promedio",data:'+histAvgJSON+',borderColor:"#a93a31",borderDash:[6,4],borderWidth:2,pointRadius:0,fill:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:txtC,font:{size:10}}}},scales:{x:{grid:{display:false},ticks:{color:txtC,font:{size:9}}},y:{grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}}},animation:{duration:600}}});}':'')
+    +(hist.length>=2?'var chHC=document.getElementById("ch-hist-comp");if(chHC){new Chart(chHC,{type:"bar",data:{labels:'+histLabelsJSON+',datasets:[{label:"Transferencias",data:'+histTransfJSON+',backgroundColor:"rgba(58,125,92,.7)",borderRadius:4,stack:"s"},{label:"Echeq",data:'+histEcheqJSON+',backgroundColor:"rgba(192,124,28,.7)",borderRadius:4,stack:"s"},{label:"Impuestos",data:'+histImpJSON+',backgroundColor:"rgba(30,61,89,.7)",borderRadius:4,stack:"s"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:txtC,font:{size:10}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:txtC,font:{size:9}}},y:{stacked:true,grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}}},animation:{duration:600}}});}':'')
     +'}catch(e){}'
     +'<\/script>'
     +'</body></html>';
