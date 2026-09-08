@@ -1170,7 +1170,10 @@ function openVistaGerencial(){
   var totalTransf=0,totalEcheq=0;
   sel.forEach(function(o){var sp=splitTransfEcheq(o);totalTransf+=sp.transf;totalEcheq+=sp.echeq;});
   var impTotal=state.impuestos.reduce(function(s,imp){return s+imp.importe;},0);
+  var totalTransfNeto=totalTransf;
   totalTransf+=impTotal;totalEquiv+=impTotal;
+  var pctImp=totalEquiv>0?Math.round(impTotal/totalEquiv*100):0;
+  var pctTransfNeto=totalEquiv>0?Math.round(totalTransfNeto/totalEquiv*100):0;
   var hasUSD=sel.some(function(o){return o.moneda==='USD';});
   var usdCount=sel.filter(function(o){return o.moneda==='USD';}).length;
   var totalUSD=sel.filter(function(o){return o.moneda==='USD';}).reduce(function(s,o){return s+efectivo(o);},0);
@@ -1298,8 +1301,9 @@ function openVistaGerencial(){
 
   doc+='<div class="kpis">';
   doc+='<div class="kpi-card pri"><div class="label">Total a Pagar</div><div class="val">'+fmtARS(totalEquiv)+'</div><div class="sub">'+sel.length+' ordenes'+(hasUSD?' · '+usdCount+' en USD ('+fmtUSD(totalUSD)+')':'')+'</div></div>';
-  doc+='<div class="kpi-card green"><div class="label">Transferencias</div><div class="val">'+fmtARS(totalTransf)+'</div><div class="sub">'+pctTransf+'% del total</div></div>';
+  doc+='<div class="kpi-card green"><div class="label">Transf. Proveedores</div><div class="val">'+fmtARS(totalTransfNeto)+'</div><div class="sub">'+pctTransfNeto+'% del total</div></div>';
   doc+='<div class="kpi-card amber"><div class="label">Echeqs</div><div class="val">'+fmtARS(totalEcheq)+'</div><div class="sub">'+pctEcheq+'% del total</div></div>';
+  if(impTotal>0) doc+='<div class="kpi-card"><div class="label">Impuestos</div><div class="val" style="color:#a93a31">'+fmtARS(impTotal)+'</div><div class="sub">'+pctImp+'% del total</div></div>';
   doc+='<div class="kpi-card"><div class="label">Plazo Promedio</div><div class="val" style="color:'+(avgPlazo>=30?'#3a7d5c':'#c07c1c')+'">'+Math.round(avgPlazo)+' dias</div><div class="sub">'+(avgPlazo>=30?'Cumple meta':'Por debajo de 30d')+'</div></div>';
   doc+='</div>';
 
@@ -1434,7 +1438,7 @@ function openVistaGerencial(){
     +'var txtC="#1a1a18",mutC="#8a887f",brdC="#dddbd6";'
     +'var barOpts={indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return fmtV(c.raw);}}}},scales:{x:{grid:{color:brdC},ticks:{color:mutC,font:{size:10},callback:fmtV}},y:{grid:{display:false},ticks:{color:txtC,font:{family:"Figtree,system-ui,sans-serif",size:11}}}},animation:{duration:600}};'
     +'try{'
-    +'new Chart(document.getElementById("ch-pago"),{type:"doughnut",data:{labels:["Transferencias","Echeqs"],datasets:[{data:['+totalTransf+','+totalEcheq+'],backgroundColor:["#3a7d5c","#c07c1c"],borderWidth:1,borderColor:brdC}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:txtC,font:{family:"Figtree,system-ui,sans-serif",size:12},padding:12}}},animation:{duration:600}}});'
+    +'new Chart(document.getElementById("ch-pago"),{type:"doughnut",data:{labels:["Transf. Proveedores",'+(impTotal>0?'"Impuestos",':'')+'"Echeqs"],datasets:[{data:['+totalTransfNeto+','+(impTotal>0?impTotal+',':'')+totalEcheq+'],backgroundColor:["#3a7d5c",'+(impTotal>0?'"#a93a31",':'')+'"#c07c1c"],borderWidth:1,borderColor:brdC}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:txtC,font:{family:"Figtree,system-ui,sans-serif",size:12},padding:12}}},animation:{duration:600}}});'
     +'new Chart(document.getElementById("ch-sector"),{type:"bar",data:{labels:'+sectorLabels+',datasets:[{data:'+sectorVals+',backgroundColor:"#1e3d59",borderRadius:4,barThickness:18}]},options:barOpts});'
     +'var chTP=document.getElementById("ch-transf-prov");if(chTP){new Chart(chTP,{type:"bar",data:{labels:'+transfProvLabels+',datasets:[{data:'+transfProvVals+',backgroundColor:"#3a7d5c",borderRadius:4,barThickness:16}]},options:barOpts});}'
     +'var chEP=document.getElementById("ch-echeq-prov");if(chEP){new Chart(chEP,{type:"bar",data:{labels:'+echeqProvLabels+',datasets:[{data:'+echeqProvVals+',backgroundColor:"#c07c1c",borderRadius:4,barThickness:16}]},options:barOpts});}'
@@ -1553,7 +1557,7 @@ function mesLabel(key){
 function renderFlujo(){
   destroyCharts();
   var el=document.getElementById('tab-flujo');
-  var sel=[...state.selected].map(function(i){return state.orders[i];}).filter(Boolean);
+  var sel=[...state.selected].map(function(i){var o=state.orders[i];if(o)o._idx=i;return o;}).filter(Boolean);
 
   if(!sel.length&&!state.impuestos.length){
     el.innerHTML='<div class="rpt-empty">Selecciona ordenes o carga impuestos para ver el flujo de caja</div>';
@@ -1627,13 +1631,13 @@ function renderFlujo(){
       var matched=false;
       diasData.forEach(function(dd){
         if(fp===dd.iso){
-          dd.items.push({desc:o.proveedor,monto:sp.transf,sector:o.sector,tipo:'transf'});
+          dd.items.push({desc:o.proveedor,monto:sp.transf,sector:o.sector,tipo:'transf',oi:o._idx});
           dd.total+=sp.transf;
           matched=true;
         }
       });
       if(!matched&&!fp){
-        sinFechaSem.push({desc:o.proveedor,monto:sp.transf,sector:o.sector,tipo:'transf'});
+        sinFechaSem.push({desc:o.proveedor,monto:sp.transf,sector:o.sector,tipo:'transf',oi:o._idx});
       }
     }
   });
@@ -1677,12 +1681,13 @@ function renderFlujo(){
     if(dd.items.length){
       var barPct=maxDia>0?dd.total/maxDia*100:0;
       html+='<div class="flujo-bar"><div class="flujo-bar-seg flujo-bar-transf" style="width:'+barPct+'%"></div></div>';
-      html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th>Tipo</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+      html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th>Tipo</th><th style="text-align:right">Importe</th><th>F. Pago</th></tr></thead><tbody>';
       dd.items.sort(function(a,b){return b.monto-a.monto;});
       dd.items.forEach(function(it){
         var tipoLabel=it.tipo==='transf'?'Transferencia':'Impuesto';
         var tipoColor=it.tipo==='transf'?'var(--acc)':'var(--pri)';
-        html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td style="color:'+tipoColor+';font-weight:500;font-size:.78rem">'+tipoLabel+'</td><td class="num">'+fmtARS(it.monto)+'</td></tr>';
+        var fpCell=it.tipo==='transf'&&it.oi!=null?'<input type="date" style="width:110px;font-size:.72rem;font-family:var(--mono)" value="'+(state.orders[it.oi].fechaPago||'')+'" onchange="updField('+it.oi+',\'fechaPago\',this.value);renderFlujo()">':'';
+        html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td style="color:'+tipoColor+';font-weight:500;font-size:.78rem">'+tipoLabel+'</td><td class="num">'+fmtARS(it.monto)+'</td><td>'+fpCell+'</td></tr>';
       });
       html+='</tbody></table></div></div>';
     } else {
@@ -1694,11 +1699,12 @@ function renderFlujo(){
   if(sinFechaSem.length){
     html+='<div class="flujo-mes" style="border-left:3px solid var(--warn)">';
     html+='<div class="flujo-mes-header"><h3 style="color:var(--warn)">Sin fecha asignada</h3><span class="flujo-mes-total">'+fmtARS(sinFechaTotal)+'</span></div>';
-    html+='<div style="padding:0 1rem .4rem;font-size:.72rem;color:var(--text-muted)">Transferencias sin fecha de pago &mdash; asignar dia en la columna F. Pago de Ordenes</div>';
-    html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th style="text-align:right">Importe</th></tr></thead><tbody>';
+    html+='<div style="padding:0 1rem .4rem;font-size:.72rem;color:var(--text-muted)">Asigna una fecha de pago para organizar las transferencias en el flujo semanal</div>';
+    html+='<div class="flujo-mes-body"><div class="rpt-table-wrap" style="margin:0"><table class="rpt-table"><thead><tr><th>Concepto</th><th>Sector</th><th style="text-align:right">Importe</th><th>F. Pago</th></tr></thead><tbody>';
     sinFechaSem.sort(function(a,b){return b.monto-a.monto;});
     sinFechaSem.forEach(function(it){
-      html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td class="num">'+fmtARS(it.monto)+'</td></tr>';
+      var fpCell=it.oi!=null?'<input type="date" style="width:110px;font-size:.72rem;font-family:var(--mono)" value="" onchange="updField('+it.oi+',\'fechaPago\',this.value);renderFlujo()">':'';
+      html+='<tr><td>'+esc(it.desc)+'</td><td style="font-size:.78rem">'+esc(it.sector)+'</td><td class="num">'+fmtARS(it.monto)+'</td><td>'+fpCell+'</td></tr>';
     });
     html+='</tbody></table></div></div>';
     html+='</div>';
