@@ -409,7 +409,7 @@ var PAGOS=['Transferencia','Echeq','Transferencia + Echeq'];
 var SKEY='gestor-pagos-v3';
 var activeTab='orders';
 
-var state={orders:[],selected:new Set(),sectors:[],newOCs:new Set(),paidCount:0,lastSaved:null,unsaved:false,tipoCambio:1200,impuestos:[],historial:[],manualSeq:0};
+var state={orders:[],selected:new Set(),sectors:[],newOCs:new Set(),paidCount:0,lastSaved:null,unsaved:false,tipoCambio:1200,impuestos:[],historial:[],manualSeq:0,pagosRealizados:null};
 
 function extractSector(d){
   if(!d) return 'Sin Especificar';
@@ -590,6 +590,7 @@ function loadBacklog(){
     state.impuestos=data.impuestos||[];
     state.historial=data.historial||[];
     state.manualSeq=data.manualSeq||0;
+    state.pagosRealizados=data.pagosRealizados||null;
     state.newOCs=new Set();
     state.unsaved=false;
     document.getElementById('tc-input').value=state.tipoCambio;
@@ -607,6 +608,7 @@ function saveBacklog(){
       impuestos:state.impuestos,
       historial:state.historial,
       manualSeq:state.manualSeq,
+      pagosRealizados:state.pagosRealizados,
       lastSaved:new Date().toISOString()
     };
     localStorage.setItem(SKEY,JSON.stringify(data));
@@ -742,9 +744,30 @@ function markPaid(){
     });
 }
 
+function normProv(s){return String(s||'').toUpperCase().replace(/\./g,'').replace(/\s+/g,' ').replace(/\bS\s*A\b/g,'SA').replace(/\bS\s*R\s*L\b/g,'SRL').replace(/\bS\s*H\b/g,'SH').trim();}
+
 async function importPayments(file){
   try{
     var rows=await parseFile(file);
+    var isPayReport=rows.length>0&&rows.some(function(r){return String(r['Documento']||'').toLowerCase().indexOf('orden de pago')>=0;});
+    if(isPayReport){
+      var provTotals={};
+      rows.forEach(function(r){
+        var prov=String(r['Proveedor']||'').trim();
+        var total=parseFloat(r['Total'])||0;
+        if(!prov||total<=0) return;
+        var key=normProv(prov);
+        if(!provTotals[key]) provTotals[key]={nombre:prov,total:0,count:0};
+        provTotals[key].total+=total;provTotals[key].count++;
+      });
+      var totalPagado=Object.values(provTotals).reduce(function(s,p){return s+p.total;},0);
+      var cantPagos=rows.filter(function(r){return parseFloat(r['Total'])>0;}).length;
+      state.pagosRealizados={fecha:new Date().toISOString(),proveedores:provTotals,totalPagado:totalPagado,cantPagos:cantPagos};
+      state.unsaved=true;
+      saveBacklog();render();
+      showMsg('Reporte de pagos importado: '+cantPagos+' pagos por '+fmtARS(totalPagado));
+      return;
+    }
     var paidOCs=new Set();
     rows.forEach(function(r){
       var oc=String(r['Doc-nro int']||r['Nro OC']||r['Documento']||'').trim();
@@ -1328,6 +1351,32 @@ function openVistaGerencial(inPage){
     +'.pareto-tbl .p-amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:#1e3d59;padding:.2rem .5rem;background:#f4f8fb;border-radius:4px;font-size:.78rem}'
     +'.pareto-tbl tr.p80 .prov-name{color:#1e3d59;font-weight:600}'
     +'.pareto-tbl tr.p80 .p-amt{background:#e8f0f7}'
+    +'.cumpl-section{background:#fff;border:1px solid #dddbd6;border-radius:10px;padding:1.2rem;margin-top:1.5rem;margin-bottom:1.5rem}'
+    +'.cumpl-section h2{font-size:.9rem;font-weight:600;color:#1e3d59;margin:0 0 .8rem;padding-bottom:.3rem;border-bottom:1px solid #dddbd6}'
+    +'.cumpl-gauge{display:flex;align-items:center;gap:1.5rem;margin-bottom:1rem}'
+    +'.cumpl-pct{font-size:2.5rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}'
+    +'.cumpl-pct.green{color:#3a7d5c}.cumpl-pct.red{color:#c0392b}.cumpl-pct.amber{color:#c07c1c}'
+    +'.cumpl-bar-wrap{flex:1}'
+    +'.cumpl-bar-bg{height:20px;background:#eeecea;border-radius:10px;overflow:hidden;position:relative}'
+    +'.cumpl-bar-fill{height:100%;border-radius:10px;transition:width .6s}'
+    +'.cumpl-bar-fill.green{background:#3a7d5c}.cumpl-bar-fill.red{background:#c0392b}.cumpl-bar-fill.amber{background:#c07c1c}'
+    +'.cumpl-bar-marks{position:relative;height:14px;font-size:.65rem;color:#8a887f}'
+    +'.cumpl-bar-marks span{position:absolute;transform:translateX(-50%)}'
+    +'.cumpl-meta{display:flex;gap:1.5rem;font-size:.82rem;color:#5a5954;margin-bottom:1rem}'
+    +'.cumpl-meta b{color:#1a1a18}'
+    +'.cumpl-tbl{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:.8rem}'
+    +'.cumpl-tbl th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:#8a887f;font-weight:600;padding:.35rem .5rem;border-bottom:2px solid #c5c3bc}'
+    +'.cumpl-tbl th.r{text-align:right}'
+    +'.cumpl-tbl td{padding:.35rem .5rem;border-bottom:1px solid #eeecea;vertical-align:middle}'
+    +'.cumpl-tbl .c-prov{font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    +'.cumpl-tbl .c-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}'
+    +'.cumpl-tbl .c-pct{text-align:right;font-weight:700;white-space:nowrap;padding:.15rem .4rem;border-radius:4px;font-size:.78rem}'
+    +'.cumpl-tbl .c-pct.green{color:#3a7d5c;background:rgba(58,125,92,.08)}'
+    +'.cumpl-tbl .c-pct.red{color:#c0392b;background:rgba(192,57,43,.08)}'
+    +'.cumpl-tbl .c-pct.amber{color:#c07c1c;background:rgba(192,124,28,.08)}'
+    +'.cumpl-tbl .c-pct.na{color:#8a887f;background:#f4f4f1}'
+    +'.cumpl-warn{background:#fef3cd;color:#856404;border:1px solid #ffc107;border-radius:6px;padding:.6rem .8rem;font-size:.8rem;margin-bottom:.8rem}'
+    +'.cumpl-meta{flex-wrap:wrap}'
     +'</style></head><body>'
     +'<div class="toolbar no-print"><button class="tb-btn" onclick="location.href=location.pathname">&#8592; Volver</button><button class="tb-btn primary" id="btn-copy-link" onclick="copyReportLink()">Copiar Link</button><span class="tb-copied" id="copy-ok">&#10003; Copiado</span><span class="tb-title">Reporte Gerencial</span><button class="tb-btn" onclick="window.print()">Imprimir</button></div>'
     +'<div class="page">'
@@ -1380,6 +1429,53 @@ function openVistaGerencial(inPage){
   doc+='</div></div>';
 
   doc+='<div class="total-bar"><span>TOTAL GENERAL</span><span>'+fmtARS(totalEquiv)+'</span></div>';
+
+  // --- CUMPLIMIENTO DE PAGOS ---
+  if(state.pagosRealizados){
+    var pg=state.pagosRealizados;
+    var totalProg=totalEquiv;
+    var provProg={};
+    sel.forEach(function(o){
+      var p=o.proveedor||'Sin proveedor';
+      var key=normProv(p);
+      if(!provProg[key]) provProg[key]={nombre:p,programado:0};
+      provProg[key].programado+=efectivoARS(o);
+    });
+    var cumplRows=[];
+    var totalPagMatched=0;
+    var allKeys=new Set(Object.keys(provProg));
+    Object.keys(pg.proveedores).forEach(function(k){allKeys.add(k);});
+    allKeys.forEach(function(key){
+      var prog=provProg[key]?provProg[key].programado:0;
+      var pagInfo=pg.proveedores[key];
+      var pag=pagInfo?pagInfo.total:0;
+      var nombre=provProg[key]?provProg[key].nombre:(pagInfo?pagInfo.nombre:key);
+      if(prog>0&&pag>0) totalPagMatched+=pag;
+      var pct=prog>0?Math.round(pag/prog*1000)/10:pag>0?-1:0;
+      cumplRows.push({nombre:nombre,prog:prog,pag:pag,pct:pct});
+    });
+    cumplRows.sort(function(a,b){return b.prog-a.prog;});
+    var cumplPct=totalProg>0?Math.round(totalPagMatched/totalProg*1000)/10:0;
+    var cumplClass=cumplPct>=80&&cumplPct<=100?'green':cumplPct<80?'red':'amber';
+    var barW=Math.min(cumplPct,120);
+    var provMatch=0;var provNoMatch=0;
+    cumplRows.forEach(function(r){if(r.prog>0){if(r.pag>0)provMatch++;else provNoMatch++;}});
+    doc+='<div class="cumpl-section"><h2>Cumplimiento de Pagos — Programado vs Realizado</h2>';
+    doc+='<div class="cumpl-gauge"><div class="cumpl-pct '+cumplClass+'">'+cumplPct+'%</div>';
+    doc+='<div class="cumpl-bar-wrap"><div class="cumpl-bar-bg"><div class="cumpl-bar-fill '+cumplClass+'" style="width:'+barW+'%"></div></div>';
+    doc+='<div class="cumpl-bar-marks"><span style="left:0">0%</span><span style="left:80%">80%</span><span style="left:100%">100%</span></div></div></div>';
+    doc+='<div class="cumpl-meta"><div>Programado: <b>'+fmtARS(totalProg)+'</b></div><div>Pagado (coincidentes): <b>'+fmtARS(totalPagMatched)+'</b></div><div>Total pagos reporte: <b>'+fmtARS(pg.totalPagado)+'</b></div><div>Pagos: <b>'+pg.cantPagos+'</b></div></div>';
+    if(provNoMatch>0&&provMatch===0){
+      doc+='<div class="cumpl-warn">No se encontraron coincidencias entre proveedores programados y pagados. Verifique que los nombres coincidan.</div>';
+    }
+    doc+='<table class="cumpl-tbl"><tr><th>Proveedor</th><th class="r">Programado</th><th class="r">Pagado</th><th class="r">Cumpl.</th></tr>';
+    cumplRows.slice(0,20).forEach(function(r){
+      var cls=r.pct<0?'na':r.pct>=80&&r.pct<=100?'green':r.pct<80?'red':'amber';
+      var pctStr=r.pct<0?'Extra':(r.pct>500?'>500%':r.pct+'%');
+      doc+='<tr><td class="c-prov">'+r.nombre+'</td><td class="c-num">'+fmtARS(r.prog)+'</td><td class="c-num">'+fmtARS(r.pag)+'</td><td class="c-pct '+cls+'">'+pctStr+'</td></tr>';
+    });
+    doc+='</table></div>';
+  }
 
   // --- FLUJO DE CAJA SEMANAL ---
   var dayOfWeek=today.getDay();
